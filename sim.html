@@ -440,7 +440,7 @@
                     <button class="btn-sm" onclick="tuneTo(28400000, 'USB')">10m SSB</button>
                     <button class="btn-sm" onclick="tuneTo(1200000, 'AM')">BC AM</button>
                 </div>
-                <button class="btn-sm" id="btn-ft8-full" style="margin-top:8px; width:100%; background:linear-gradient(180deg,#ec4899,#9d174d); color:#fff;">MODO FT8 COMPLETO</button>
+                <button class="btn-sm" id="btn-ft8-mode" style="margin-top:8px; width:100%; background:linear-gradient(180deg,#ec4899,#9d174d); color:#fff;">FT8 Mode</button>
                 <div class="btn-grid-4" style="margin-top: 12px;">
                     <button class="btn-sm" id="btn-usb">USB</button>
                     <button class="btn-sm active" id="btn-lsb">LSB</button>
@@ -560,6 +560,7 @@
         let ft8BasebandOffsetTx = 1500; 
         let userFt8CustomMessage = '';
         let ft8StrictMode = true;
+        let ft8SymbolRegistry = new Map();
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
             '80m': {center:3700000, qrn:1.2, fade:0.35},
@@ -757,7 +758,12 @@
                 else if(i >= 72) tones.push(costas[i - 72]);
                 else tones.push(nextTone());
             }
+            ft8SymbolRegistry.set(tones.join(','), msg);
             return tones;
+        }
+        function decodeFT8FromTones(tones) {
+            if(!Array.isArray(tones) || tones.length !== 79) return '';
+            return ft8SymbolRegistry.get(tones.join(',')) || '';
         }
         function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
             const sr = context.sampleRate;
@@ -1033,7 +1039,9 @@
                 nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq - net.basebandOffset; 
                 nodes.mod = actx.createGain(); nodes.mod.gain.value = 0;
                 nodes.audio = actx.createBufferSource(); 
-                nodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, net.bots[0].seed, net.currentMessage || `CQ ${net.bots[0].call}`); 
+                const initialMsg = net.currentMessage || `CQ ${net.bots[0].call} ${net.bots[0].grid}`;
+                net.lastTones = ft8MessageToTones(initialMsg, net.bots[0].seed);
+                nodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, net.bots[0].seed, initialMsg); 
                 nodes.audio.loop = true; 
                 
                 nodes.f1 = actx.createBiquadFilter(); nodes.f1.type = 'highpass'; nodes.f1.frequency.value = ifFreq - 200;
@@ -1184,6 +1192,7 @@
                         if(net.activeNodes && net.activeNodes.audio) {
                             try { net.activeNodes.audio.stop(); } catch(e) {}
                             net.activeNodes.audio = actx.createBufferSource();
+                            net.lastTones = ft8MessageToTones(net.currentMessage, bot.seed + Math.random());
                             net.activeNodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, bot.seed + Math.random(), net.currentMessage);
                             net.activeNodes.audio.loop = false;
                             net.activeNodes.audio.connect(net.activeNodes.mod.gain);
@@ -1303,9 +1312,10 @@
                     let snr = Math.floor((baseGain * 60) - 120 + 75); // Normalización para mostrar ~ -24 a +10
                     
                     if(snr >= -24) { 
+                        let decodedMsg = (net.lastTones && net.lastTones.length === 79) ? (decodeFT8FromTones(net.lastTones) || net.currentMessage) : net.currentMessage;
                         decodes.push({
                             time: timeStr, snr: snr, dt: (Math.random()*0.8 - 0.4).toFixed(1),
-                            freq: Math.floor(net.basebandOffset), msg: net.currentMessage, 
+                            freq: Math.floor(net.basebandOffset), msg: decodedMsg, 
                             call: net.bots[0].call, grid: net.bots[0].grid
                         });
                     }
@@ -1795,7 +1805,7 @@
                 printToConsole(`[SYS] Mensaje FT8 personalizado en cola: ${userFt8CustomMessage}`, 'sys');
             });
 
-            document.getElementById('btn-ft8-full').addEventListener('click', () => {
+            document.getElementById('btn-ft8-mode').addEventListener('click', () => {
                 tuneTo(7074000, 'USB');
                 filterBw = 3000;
                 document.getElementById('filt-bw').value = filterBw;
@@ -1807,7 +1817,7 @@
                 updateNotchVisual();
                 const cons = document.getElementById('data-console');
                 cons.innerHTML = '<div class=\"ft8-msg-row ft8-head\"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>';
-                printToConsole('[SYS] MODO FT8 COMPLETO activado: 7.074 MHz USB, SQL abierto, BW 3.0k.', 'sys');
+                printToConsole('[SYS] FT8 Mode activado: 7.074 MHz USB, SQL abierto, BW 3.0k.', 'sys');
             });
 
             const pttBtn = document.getElementById('btn-ptt');
