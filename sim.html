@@ -1309,6 +1309,7 @@
                 printToConsole('[FT8] Sin decodificaciones: ajusta a 7.074 o 14.074 MHz USB y espera fin de slot 15s.', 'sys');
             }
             
+            if(decodes.length === 0 && ft8StrictMode) { printToConsole('[FT8] Decoder: sin tramas válidas en este ciclo.', 'sys'); }
             decodes.forEach(d => {
                 let isToMe = d.msg.includes(myCallsign);
                 let colorClass = isToMe ? 'ft8-tx-line' : 'ft8-rx-line';
