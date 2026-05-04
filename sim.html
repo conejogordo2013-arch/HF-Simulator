@@ -1219,6 +1219,29 @@
             return inDecodeWindow && !ft8DecodedThisCycle;
         }
 
+        function detectFT8Structure(net) {
+            const tones = net?.lastTones || [];
+            if(tones.length !== 79) return null;
+
+            const costasCorrelation = RX.costasSync(tones); // 0..1
+            let legalStepCount = 0;
+            let repeatedToneCount = 0;
+            for(let i = 1; i < tones.length; i++) {
+                const step = Math.abs(tones[i] - tones[i - 1]);
+                if(step <= 7) legalStepCount++;
+                if(step === 0) repeatedToneCount++;
+            }
+            const fskPatternMatch = Math.max(0, Math.min(1, (legalStepCount / 78) * 0.75 + (repeatedToneCount / 78) * 0.25));
+
+            const uniqueTones = new Set(tones).size;
+            const spectralNarrowness = Math.max(0, Math.min(1, 1 - (Math.max(0, uniqueTones - 6) / 8)));
+
+            const temporalStability = Math.max(0, Math.min(1, (net.timer || 0) / 12.64));
+
+            const ft8Score = (costasCorrelation * 0.42) + (fskPatternMatch * 0.28) + (temporalStability * 0.18) + (spectralNarrowness * 0.12);
+            return { ft8Score, costasCorrelation, fskPatternMatch, temporalStability, spectralNarrowness };
+        }
+
         function detectFT8Presence(signalBuffer = null) {
             const nowMs = Date.now();
             if(nowMs - ft8LastPresenceCheckMs < 900) return ft8PresenceCached;
@@ -1231,29 +1254,43 @@
                 return false;
             }
 
-            // Gate ligero: energía + coherencia de spacing + sync parcial Costas
-            let coherentHits = 0;
-            let totalPower = 0;
+            const noiseFloor = Math.max(0.02, (0.8 - (vfoFreqActual / MAX_FREQ) * 0.6));
+            let best = null;
+            let peakClusterCount = 0;
+
             active.forEach(net => {
-                const tones = net.lastTones || [];
-                if(tones.length !== 79) return;
+                const structure = detectFT8Structure(net);
+                if(!structure) return;
+
+                const toneHist = new Map();
+                for(const t of net.lastTones) toneHist.set(t, (toneHist.get(t) || 0) + 1);
+                const sorted = [...toneHist.values()].sort((a, b) => b - a);
+                const top3 = (sorted[0] || 0) + (sorted[1] || 0) + (sorted[2] || 0);
+                const clusterRatio = top3 / 79;
+                if(clusterRatio >= 0.30) peakClusterCount++;
+
                 const estPower = (net.bots?.[0]?.pwr || 0.1) * calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain);
-                totalPower += estPower;
-                let spacingOk = 0;
-                for(let i=1;i<Math.min(12, tones.length);i++) {
-                    const d = Math.abs((tones[i] - tones[i-1]) * FT8Core.TONE_SPACING);
-                    if(d <= 43.75) spacingOk++;
-                }
-                const costas = RX.costasSync(tones);
-                if(spacingOk >= 8 && costas >= 0.5) coherentHits++;
+                const pseudoSnr = estPower / noiseFloor;
+                const adaptiveBoost = Math.max(0.82, Math.min(1.08, 0.95 + (0.22 * Math.log10(Math.max(0.08, pseudoSnr)))));
+                const score = Math.max(0, Math.min(1, structure.ft8Score * adaptiveBoost));
+
+                if(!best || score > best.score) best = { ...structure, score, pseudoSnr, clusterRatio, freq: net.freq };
             });
 
-            const noiseRef = Math.max(0.02, (0.8 - (vfoFreqActual / MAX_FREQ) * 0.6));
-            const snrGate = totalPower / noiseRef;
-            const present = coherentHits > 0 && snrGate > 0.7;
+            const baseThreshold = 0.30;
+            const noiseAdaptiveOffset = Math.max(-0.07, Math.min(0.08, (noiseFloor - 0.25) * -0.18));
+            const adaptiveThreshold = baseThreshold + noiseAdaptiveOffset;
+            const clusterSupport = peakClusterCount > 0 ? 0.02 : 0;
+            const finalScore = best ? Math.min(1, best.score + clusterSupport) : 0;
+            const present = finalScore >= adaptiveThreshold;
+
             ft8PresenceCached = present;
             if(present) ft8PresenceHoldSlots = 2;
             else if(ft8PresenceHoldSlots > 0) { ft8PresenceHoldSlots--; ft8PresenceCached = true; }
+
+            if(ft8StrictMode && best) {
+                printToConsole(`[FT8][GateDbg] costas=${best.costasCorrelation.toFixed(2)} fsk=${best.fskPatternMatch.toFixed(2)} spec=${best.spectralNarrowness.toFixed(2)} temp=${best.temporalStability.toFixed(2)} score=${finalScore.toFixed(2)} thr=${adaptiveThreshold.toFixed(2)} snr~${best.pseudoSnr.toFixed(2)} ${present ? '=> decode' : '=> idle'}`, 'sys');
+            }
             return ft8PresenceCached;
         }
 
