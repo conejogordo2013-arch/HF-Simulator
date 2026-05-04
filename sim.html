@@ -547,6 +547,7 @@
         // === VARIABLES ESTADO FT8 REAL ===
         let ft8CycleTime = 0;
         let ft8DecodedThisCycle = false;
+        let ft8CurrentSlot = -1;
         let userFt8State = 'IDLE'; // IDLE, TX_CQ, TX_REPLY
         let userFt8TargetCall = '';
         let userFt8TargetGrid = '';
@@ -1117,13 +1118,17 @@
             let utcSecs = utc.getUTCSeconds();
             let utcMs = utc.getUTCMilliseconds();
             ft8CycleTime = (utcSecs % 15) + (utcMs / 1000);
+            const slot = Math.floor((utc.getTime() / 1000) / 15);
             
             document.getElementById('ft8-cycle-timer').innerText = `Seq: ${ft8CycleTime.toFixed(1)}s`;
 
-            if(ft8CycleTime < 1.0) ft8DecodedThisCycle = false;
+            if(slot !== ft8CurrentSlot) {
+                ft8CurrentSlot = slot;
+                ft8DecodedThisCycle = false;
+            }
 
-            // Procesar Decodificaciones de FT8 (Segundo 13.0)
-            if(ft8CycleTime >= 13.0 && !ft8DecodedThisCycle) {
+            // Procesar decodificación cerca del fin de secuencia FT8 (slot de 15s)
+            if(ft8CycleTime >= 14.2 && !ft8DecodedThisCycle) {
                 ft8DecodedThisCycle = true;
                 processFT8Decodes(utc);
             }
@@ -1143,8 +1148,8 @@
 
                 if (net.type === 'FT8') {
                     // Start of sequence
-                    if(ft8CycleTime < 0.5 && net.state === 'IDLE' && Math.random() > 0.35) {
-                        net.state = 'TX'; net.timer = 12.6; 
+                    if(ft8CycleTime < 0.18 && net.state === 'IDLE' && Math.random() > 0.35) {
+                        net.state = 'TX'; net.timer = 12.64; 
                         
                         // Bot State Machine Logic
                         let bot = net.bots[0];
@@ -1180,7 +1185,7 @@
                     }
                     if(net.state === 'TX') {
                         net.timer -= 0.05;
-                        if(net.timer <= 0 || ft8CycleTime >= 12.6) {
+                        if(net.timer <= 0 || ft8CycleTime >= 12.64) {
                             net.state = 'IDLE';
                             if(net.activeNodes && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(0.0, now, 0.1);
                         }
@@ -1377,7 +1382,7 @@
 
         // Bucle para transmisión automática FT8 en límite de ciclo 15s
         setInterval(() => {
-            if(userFt8State !== 'IDLE' && ft8CycleTime < 0.5 && !isTransmitting) {
+            if(userFt8State !== 'IDLE' && ft8CycleTime < 0.18 && !isTransmitting) {
                 executeUserFT8Tx();
             }
         }, 200);
