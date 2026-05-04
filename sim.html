@@ -116,8 +116,8 @@
             box-shadow: inset 0 0 40px rgba(0,0,0,1), 0 10px 25px rgba(0,0,0,0.6), 0 0 0 1px #000;
         }
         
-        #canvas-local { width: 100%; flex: 1.2; display: block; border-bottom: 2px solid #1a1a1a; cursor: crosshair;}
-        #canvas-waterfall { width: 100%; flex: 1.8; display: block; background: #000; cursor: crosshair;}
+        #canvas-local { width: 100%; flex: 1.45; display: block; border-bottom: 2px solid #1a1a1a; cursor: crosshair;}
+        #canvas-waterfall { width: 100%; flex: 0.8; display: block; background: #000; cursor: crosshair;}
         .canvas-label { position: absolute; top: 10px; left: 15px; font-size: 0.8rem; color: #a7f3d0; font-family: 'Share Tech Mono', monospace; z-index: 10; text-shadow: 0 0 8px #10b981, 0 0 2px #000;}
         
         .vfo-passband { position: absolute; top: 0; bottom: 0; background: rgba(16, 185, 129, 0.15); border-left: 1px dashed var(--rx-color); border-right: 1px dashed var(--rx-color); pointer-events: none; z-index: 4; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.2); transition: width 0.1s, left 0.1s;}
@@ -293,6 +293,7 @@
         <div class="header">
             <div class="brand">IA<span>SDR</span><span class="pro">ATMOSFERA PRO</span></div>
             <div class="header-tools">
+                <div class="clock" id="atm-status" style="font-size:0.85rem; color:#93c5fd;">SFI 120 | Kp 2 | Noche</div>
                 <div class="clock" id="utc-clock">00:00:00 UTC</div>
                 <div class="status-indicators">
                     <div class="indicator active rx" id="ind-rx">RX</div>
@@ -541,6 +542,7 @@
         let userTxPower = 100;
         let userAntGain = 2.15;
         let targetDistanceKm = 5000;
+        let atmos = { sfi: 120, kp: 2, night: false, storm: 0.1 };
 
         // === VARIABLES ESTADO FT8 REAL ===
         let ft8CycleTime = 0;
@@ -593,6 +595,8 @@
             requestAnimationFrame(renderGraphics);
             setInterval(botEngineLoop, 50); 
             setInterval(simulateQRN, 300); 
+            setInterval(updateAtmosphereModel, 2000);
+            updateAtmosphereModel();
         });
 
         function updateClock() {
@@ -601,6 +605,17 @@
             const m = String(now.getUTCMinutes()).padStart(2, '0');
             const s = String(now.getUTCSeconds()).padStart(2, '0');
             document.getElementById('utc-clock').innerText = `${h}:${m}:${s} UTC`;
+        }
+        function updateAtmosphereModel() {
+            const now = new Date();
+            const hour = now.getUTCHours();
+            const night = (hour < 5 || hour > 18);
+            const dayFactor = night ? 0.7 : 1.0;
+            atmos.night = night;
+            atmos.sfi = Math.floor(95 + (Math.sin(now.getTime()/7200000) + 1) * 35 * dayFactor);
+            atmos.kp = Math.max(1, Math.min(7, Math.floor(1 + (Math.cos(now.getTime()/1800000) + 1) * 2.6)));
+            atmos.storm = Math.max(0, (atmos.kp - 3) / 6);
+            document.getElementById('atm-status').innerText = `SFI ${atmos.sfi} | Kp ${atmos.kp} | ${night ? 'Noche' : 'Día'}`;
         }
 
         function printToConsole(text, type='sys') {
@@ -859,7 +874,9 @@
         function simulateQRN() {
             if(!actx) return;
             let prof = bandProfiles[currentBandProfile] || bandProfiles['40m'];
-            let bandMultiplier = Math.max(0.08, (1.0 - (vfoFreqTarget / 22000000)) * prof.qrn);
+            updateAtmosphereModel();
+            let ionoPenalty = (atmos.kp * 0.12) + (atmos.night ? 0.12 : 0);
+            let bandMultiplier = Math.max(0.08, ((1.0 - (vfoFreqTarget / 22000000)) + ionoPenalty) * prof.qrn);
             let antFactor = 1 + (userAntGain / 10);
             if(Math.random() < 0.3 * bandMultiplier) {
                 let now = actx.currentTime;
@@ -947,6 +964,10 @@
         function calculatePathLoss(freqHz, distanceKm, txPowW, antGainDBi) {
             let freqMHz = freqHz / 1000000;
             let fspl = 32.44 + 20 * Math.log10(freqMHz) + 20 * Math.log10(Math.max(1, distanceKm));
+            const mufBonus = Math.max(-8, Math.min(8, (atmos.sfi - 110) * 0.08));
+            const stormLoss = atmos.kp * 1.35;
+            const nightLoss = atmos.night ? (freqMHz > 12 ? 4.5 : -2.0) : 0;
+            fspl += stormLoss + nightLoss - mufBonus;
             let pwrDBm = 10 * Math.log10(txPowW * 1000);
             let rxPwrDBm = pwrDBm + antGainDBi - fspl;
             
