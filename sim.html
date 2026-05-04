@@ -562,6 +562,7 @@
         let userFt8CustomMessage = '';
         let ft8StrictMode = true;
         let ft8SymbolRegistry = new Map();
+        let ft8ActiveSignals = [];
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
             '80m': {center:3700000, qrn:1.2, fade:0.35},
@@ -739,69 +740,108 @@
         }
 
         
-        function normalizeFT8Message(raw) {
-            const msg = (raw || '').toUpperCase().trim().replace(/\s+/g, ' ').slice(0, 37);
-            if(!ft8StrictMode) return msg;
-            const cq = /^CQ [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
-            const grid = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
-            const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?(0?[1-9]|1[0-9]|2[0-9])$/;
-            const rr73 = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} (RR73|73)$/;
-            return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
-        }
-
-        // Generador de Forma de Onda FT8 (CPFSK 8-Tone)
-        function ft8MessageToTones(message = '', dataSeed = 0) {
-            const tones = [];
+        const FT8 = (() => {
             const costas = [3, 1, 4, 0, 6, 5, 2];
-            const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
-            let seed = 2166136261 >>> 0;
-            for(let i = 0; i < msg.length; i++) { seed = Math.imul(seed ^ msg.charCodeAt(i), 16777619) >>> 0; }
-            seed ^= Math.floor((dataSeed || 0) * 1e6) >>> 0;
-            const nextTone = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed & 7; };
-            for(let i = 0; i < 79; i++) {
-                if(i < 7) tones.push(costas[i]);
-                else if(i >= 36 && i < 43) tones.push(costas[i - 36]);
-                else if(i >= 72) tones.push(costas[i - 72]);
-                else tones.push(nextTone());
+            const symbolCount = 79;
+            const msgBits = 77;
+            const toneSpacingHz = 6.25;
+            const symbolPeriodS = 0.160;
+
+            function hash32(text) {
+                let h = 2166136261 >>> 0;
+                for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+                return h >>> 0;
             }
-            ft8SymbolRegistry.set(tones.join(','), msg);
-            return tones;
-        }
-        function decodeFT8FromTones(tones) {
-            if(!Array.isArray(tones) || tones.length !== 79) return '';
-            return ft8SymbolRegistry.get(tones.join(',')) || '';
-        }
-        function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
-            const sr = context.sampleRate;
-            const symbolTime = 0.160; 
-            const totalSymbols = 79;
-            const len = Math.floor(sr * symbolTime * totalSymbols);
-            const buf = context.createBuffer(1, len, sr);
-            const data = buf.getChannelData(0);
-
-            let phase = 0;
-            const tones = ft8MessageToTones(message, isBot ? dataSeed : Math.random());
-
-            for(let i=0; i<len; i++) {
-                let t = i / sr;
-                let symbolIdx = Math.floor(t / symbolTime);
-                if (symbolIdx >= totalSymbols) break;
-
-                let toneValue = tones[symbolIdx];
-
-                let freq = audioOffsetHz + (toneValue * 6.25);
-                phase += (2 * Math.PI * freq) / sr;
-                if (phase > 2 * Math.PI) phase -= 2 * Math.PI;
-
-                let env = 1.0;
-                if(i < 500) env = i/500;
-                if(i > len-500) env = (len-i)/500;
-
-                data[i] = Math.sin(phase) * 0.8 * env;
+            function bitsFromHash(seed, nBits) {
+                const bits = new Array(nBits);
+                let x = seed >>> 0;
+                for (let i = 0; i < nBits; i++) {
+                    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+                    bits[i] = (x >>> 0) & 1;
+                }
+                return bits;
             }
-            return buf;
-        }
+            function normalizeFT8Message(raw) {
+                const msg = (raw || '').toUpperCase().trim().replace(/\s+/g, ' ').slice(0, 37);
+                if(!ft8StrictMode) return msg;
+                const cq = /^CQ [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+                const grid = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+                const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?(0?[1-9]|1[0-9]|2[0-9])$/;
+                const rr73 = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} (RR73|73)$/;
+                return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
+            }
+            function packMessage(message = '') {
+                const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
+                return { msg, bits77: bitsFromHash(hash32(msg), msgBits) };
+            }
+            function mapToSymbols(bits77, seed = 0) {
+                const tones = [];
+                let x = (hash32(bits77.join('')) ^ ((seed * 1e6) | 0)) >>> 0;
+                const nextGrayTone = () => {
+                    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+                    const g = x & 7;
+                    return g ^ (g >> 1);
+                };
+                for (let i = 0; i < symbolCount; i++) {
+                    if(i < 7) tones.push(costas[i]);
+                    else if(i >= 36 && i < 43) tones.push(costas[i - 36]);
+                    else if(i >= 72) tones.push(costas[i - 72]);
+                    else tones.push(nextGrayTone());
+                }
+                return tones;
+            }
+            function encoder(message, seed = 0) {
+                const packed = packMessage(message);
+                return { message: packed.msg, bits77: packed.bits77, stream_simbolos: mapToSymbols(packed.bits77, seed) };
+            }
+            function modulateSymbolStream(encoded, txMeta = {}) {
+                const nowMs = Date.now();
+                const slotStartMs = Math.floor(nowMs / 15000) * 15000;
+                return {
+                    tipo: 'FT8', frecuencia_central: txMeta.frecuencia_central || vfoFreqActual,
+                    offset_frecuencia: txMeta.offset_frecuencia || 1500,
+                    stream_simbolos: encoded.stream_simbolos.slice(0, symbolCount), potencia: txMeta.potencia ?? 0.5,
+                    posicion_virtual: txMeta.posicion_virtual ?? (200 + Math.random()*9500), deriva_frecuencia: txMeta.deriva_frecuencia ?? ((Math.random()-0.5) * 0.6),
+                    offset_temporal: txMeta.offset_temporal ?? ((nowMs - slotStartMs) / 1000), id_emisor: txMeta.id_emisor || 'unknown',
+                    mensaje: encoded.message, bits77: encoded.bits77
+                };
+            }
+            return {encoder, packMessage, mapToSymbols, modulateSymbolStream, normalizeFT8Message, symbolCount, symbolPeriodS, toneSpacingHz, costas};
+        })();
 
+        const RF = {
+            injectSignal(obj){ if(!obj || obj.tipo!=='FT8') return; ft8ActiveSignals.push(obj); },
+            mixSignals(slotStartMs){ return ft8ActiveSignals.filter(s => Math.abs((s.slotStartMs || slotStartMs) - slotStartMs) < 250); },
+            applyNoise(energy){ return energy + (Math.random() * 0.35 + atmos.storm * 0.6); },
+            propagateSignals(sig){ const loss = calculatePathLoss(sig.frecuencia_central, sig.posicion_virtual || targetDistanceKm, 100, userAntGain); return Math.max(0.0001, loss * sig.potencia); }
+        };
+
+        const RX = {
+            detectSignals(mixed){ return mixed.filter(s => Math.abs((s.frecuencia_central + s.offset_frecuencia) - vfoFreqActual) < 3500); },
+            costasSync(signal){
+                const head = signal.stream_simbolos.slice(0,7).join(',');
+                const mid = signal.stream_simbolos.slice(36,43).join(',');
+                const tail = signal.stream_simbolos.slice(72,79).join(',');
+                const ref = FT8.costas.join(',');
+                return (head===ref && mid===ref && tail===ref) ? 1 : 0;
+            },
+            demodulateFSK(signal, ch){
+                const quality = Math.max(0, Math.min(1, (ch.snr + 26) / 36));
+                const out = signal.stream_simbolos.slice();
+                for(let i=0;i<out.length;i++) if(Math.random() > quality) out[i] = (out[i] + 1 + Math.floor(Math.random()*3)) & 7;
+                return out;
+            },
+            decodeBits(symbols){ return ft8SymbolRegistry.get(symbols.join(',')) || ''; },
+            reconstructMessage(symbols){ return this.decodeBits(symbols); }
+        };
+
+        function normalizeFT8Message(raw) { return FT8.normalizeFT8Message(raw); }
+        function ft8MessageToTones(message = '', dataSeed = 0) {
+            const enc = FT8.encoder(message, dataSeed || 0);
+            ft8SymbolRegistry.set(enc.stream_simbolos.join(','), enc.message);
+            return enc.stream_simbolos;
+        }
+        function decodeFT8FromTones(tones) { return RX.reconstructMessage(tones); }
         function genCall() {
             const prefixes = ['K','N','W','AA','AB','AC','AD','AE','AF','AG','EA','F','DL','I','JA','VK','PY','LU'];
             const prefix = prefixes[Math.floor(Math.random()*prefixes.length)];
@@ -1198,7 +1238,12 @@
                         if(net.activeNodes && net.activeNodes.audio) {
                             try { net.activeNodes.audio.stop(); } catch(e) {}
                             net.activeNodes.audio = actx.createBufferSource();
-                            net.lastTones = ft8MessageToTones(net.currentMessage, bot.seed + Math.random());
+                            const encoded = FT8.encoder(net.currentMessage, bot.seed + Math.random());
+                            net.lastTones = encoded.stream_simbolos;
+                            ft8SymbolRegistry.set(net.lastTones.join(','), encoded.message);
+                            const sigObj = FT8.modulateSymbolStream(encoded, {frecuencia_central: net.freq, offset_frecuencia: net.basebandOffset, potencia: bot.pwr, posicion_virtual: 300 + Math.random()*9000, deriva_frecuencia: (Math.random()-0.5)*0.4, id_emisor: bot.call});
+                            sigObj.grid = bot.grid; sigObj.slotStartMs = Math.floor(Date.now()/15000)*15000;
+                            RF.injectSignal(sigObj);
                             net.activeNodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, bot.seed + Math.random(), net.currentMessage);
                             net.activeNodes.audio.loop = false;
                             net.activeNodes.audio.connect(net.activeNodes.mod.gain);
@@ -1305,25 +1350,19 @@
             const decodeTs = new Date(utc.getTime() - 13000);
             const timeStr = `${String(decodeTs.getUTCHours()).padStart(2,'0')}${String(decodeTs.getUTCMinutes()).padStart(2,'0')}${String(decodeTs.getUTCSeconds()).padStart(2,'0')}`;
             let decodes = [];
-
-            qsoNetworks.forEach(net => {
-                if(net.type !== 'FT8' || net.state !== 'TX' || !net.currentMessage) return;
-                
-                let df = net.freq - vfoFreqActual;
-                if(df > -3000 && df < 3000) { 
-                    // Calcular SNR basado en la atenuación
-                    let baseGain = calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain); 
-                    let snr = Math.floor((baseGain * 60) - 120 + 75); // Normalización para mostrar ~ -24 a +10
-                    
-                    if(snr >= -24) { 
-                        let decodedMsg = (net.lastTones && net.lastTones.length === 79) ? (decodeFT8FromTones(net.lastTones) || net.currentMessage) : net.currentMessage;
-                        decodes.push({
-                            time: timeStr, snr: snr, dt: (Math.random()*0.8 - 0.4).toFixed(1),
-                            freq: Math.floor(net.basebandOffset), msg: decodedMsg, 
-                            call: net.bots[0].call, grid: net.bots[0].grid
-                        });
-                    }
-                }
+            const slotStartMs = Math.floor(utc.getTime() / 15000) * 15000;
+            const mixed = RF.mixSignals(slotStartMs);
+            const detected = RX.detectSignals(mixed);
+            detected.forEach(sig => {
+                const power = RF.propagateSignals(sig);
+                const noisy = RF.applyNoise(power);
+                const snr = Math.floor((power - noisy) * 80 + 8);
+                if(snr < -24) return;
+                if(RX.costasSync(sig) < 1) return;
+                const demod = RX.demodulateFSK(sig, {snr});
+                const msg = RX.reconstructMessage(demod) || sig.mensaje || '';
+                if(!msg) return;
+                decodes.push({ time: timeStr, snr, dt: (Math.random()*0.8 - 0.4).toFixed(1), freq: Math.floor(sig.offset_frecuencia), msg, call: sig.id_emisor, grid: sig.grid || '----' });
             });
 
             decodes.sort((a,b) => a.freq - b.freq);
@@ -1429,7 +1468,12 @@
         function executeUserFT8Tx() {
             if(!userFt8TxMessage) return;
             
-            let ft8Buf = generateFT8Buffer(actx, ft8BasebandOffsetTx, false, 0, userFt8TxMessage);
+            const userEnc = FT8.encoder(userFt8TxMessage, 0.1234);
+            ft8SymbolRegistry.set(userEnc.stream_simbolos.join(','), userEnc.message);
+            const userSig = FT8.modulateSymbolStream(userEnc, {frecuencia_central: vfoFreqActual, offset_frecuencia: ft8BasebandOffsetTx, potencia: Math.min(1,userTxPower/120), posicion_virtual: targetDistanceKm, deriva_frecuencia:(Math.random()-0.5)*0.2, id_emisor: myCallsign});
+            userSig.grid = myGrid; userSig.slotStartMs = Math.floor(Date.now()/15000)*15000;
+            RF.injectSignal(userSig);
+            let ft8Buf = generateFT8Buffer(actx, ft8BasebandOffsetTx, false, 0.1234, userFt8TxMessage);
             let ft8Src = actx.createBufferSource();
             ft8Src.buffer = ft8Buf;
             ft8Src.connect(txDataGain);
