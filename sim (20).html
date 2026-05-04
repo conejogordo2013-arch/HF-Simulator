@@ -1,0 +1,1904 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDR Global HF - Realismo Atmosférico & FT8</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        :root {
+            --bg-dark: #020203;
+            --panel-bg: #14171a;
+            --panel-texture: repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 2px, transparent 2px, transparent 4px), radial-gradient(circle at 50% 0%, #2a2d34, #0b0c0e);
+            --border: #1a1f26;
+            --text: #8e9bb0;
+            --accent: #f59e0b; 
+            --accent-hover: #fbbf24;
+            --lcd-bg: #05160a;
+            --lcd-text: #10b981;
+            --lcd-highlight: #a7f3d0;
+            --tx-color: #ef4444;
+            --rx-color: #10b981;
+            --rtty-color: #f59e0b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-dark); color: var(--text);
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; user-select: none; overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, #1a1c23 0%, #000 100%);
+        }
+
+        /* Overlay de encendido */
+        #power-overlay {
+            position: fixed; inset: 0; background: #000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 2000; text-align: center; padding: 20px;
+            transition: opacity 1s ease-out;
+        }
+
+        .btn-power {
+            background: rgba(245, 158, 11, 0.1); border: 2px solid var(--accent);
+            color: var(--accent); padding: 20px 60px; font-size: 1.5rem;
+            border-radius: 4px; cursor: pointer; text-transform: uppercase;
+            letter-spacing: 4px; transition: 0.3s; box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+            font-weight: bold; font-family: 'Share Tech Mono', monospace;
+        }
+        .btn-power:hover { background: var(--accent); color: #000; box-shadow: 0 0 50px rgba(245, 158, 11, 0.6); }
+
+        /* Estructura Principal */
+        .rig-container {
+            background: var(--panel-texture);
+            border: 2px solid #2d3748; border-radius: 12px; 
+            width: 99vw; max-width: 1780px; height: 97vh;
+            box-shadow: 0 40px 80px rgba(0,0,0,1), inset 0 2px 5px rgba(255,255,255,0.15), inset 0 -5px 25px rgba(0,0,0,0.9);
+            display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 72px 1fr;
+            overflow: hidden; position: relative;
+        }
+
+        /* Tornillos del chasis */
+        .screw {
+            position: absolute; width: 14px; height: 14px; background: linear-gradient(135deg, #64748b, #1e293b);
+            border-radius: 50%; border: 1px solid #000; box-shadow: inset 0 1px 3px rgba(255,255,255,0.4), 0 2px 5px rgba(0,0,0,0.9);
+            display: flex; justify-content: center; align-items: center; z-index: 100;
+        }
+        .screw::before { content: ''; width: 10px; height: 2px; background: #000; transform: rotate(45deg); opacity: 0.8; box-shadow: 0 1px 0 rgba(255,255,255,0.2);}
+        .s-tl { top: 15px; left: 15px; } .s-tr { top: 15px; right: 15px; }
+        .s-bl { bottom: 15px; left: 15px; } .s-br { bottom: 15px; right: 15px; }
+
+        /* HEADER */
+        .header {
+            grid-column: 1 / -1; background: linear-gradient(180deg, #18181b, #09090b); padding: 15px 40px;
+            border-bottom: 2px solid #000; display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.6); z-index: 10;
+        }
+        .brand { font-size: 1.5rem; font-weight: 900; color: #f1f5f9; letter-spacing: 2px; text-shadow: 0 2px 4px #000;}
+        .brand span { color: var(--accent); font-weight: 300;}
+        .brand .pro { font-size: 0.75rem; background: linear-gradient(135deg, var(--accent), #d97706); color: #000; padding: 2px 8px; border-radius: 2px; vertical-align: super; margin-left: 8px; font-weight: 900; letter-spacing: 1px; box-shadow: 0 2px 4px rgba(0,0,0,0.5);}
+        
+        .header-tools { display: flex; gap: 25px; align-items: center; }
+        .clock { font-family: 'Share Tech Mono', monospace; font-size: 1.3rem; color: #f59e0b; background: #050505; padding: 6px 15px; border-radius: 4px; border: 1px solid #333; box-shadow: inset 0 0 10px rgba(0,0,0,1); text-shadow: 0 0 8px rgba(245, 158, 11, 0.6);}
+        
+        .status-indicators { display: flex; gap: 10px; }
+        .indicator { padding: 6px 15px; border-radius: 4px; font-size: 0.85rem; font-weight: 900; background: #111; color: #333; letter-spacing: 2px; border: 1px solid #000; transition: all 0.1s;}
+        .indicator.active.rx { background: #064e3b; color: #fff; box-shadow: 0 0 20px var(--rx-color), inset 0 2px 4px rgba(255,255,255,0.4); border-color: var(--rx-color); text-shadow: 0 0 5px #fff;}
+        .indicator.active.tx { background: #7f1d1d; color: #fff; box-shadow: 0 0 25px var(--tx-color), inset 0 2px 4px rgba(255,255,255,0.4); border-color: var(--tx-color); text-shadow: 0 0 5px #fff;}
+
+        /* GLOBAL SCOPE */
+        .global-scope {
+            grid-column: 1 / -1; height: 80px; background: #020202;
+            border-bottom: 2px solid #000; position: relative;
+            box-shadow: inset 0 8px 20px rgba(0,0,0,1); overflow: hidden;
+        }
+        .glass-reflection {
+            position: absolute; top: 0; left: 0; right: 0; height: 40%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+            pointer-events: none; z-index: 12; border-radius: 8px 8px 0 0;
+        }
+        .scanlines {
+            position: absolute; inset: 0; pointer-events: none; z-index: 10;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+        }
+        .global-scope span { position: absolute; top: 6px; left: 15px; font-size: 0.7rem; color: #f59e0b; font-family: 'Share Tech Mono', monospace; z-index: 11;}
+        #canvas-global { width: 100%; height: 100%; display: block; image-rendering: pixelated;}
+        .global-cursor { position: absolute; top:0; bottom:0; width:2px; background: rgba(245, 158, 11, 0.9); box-shadow: 0 0 10px #f59e0b; pointer-events:none; z-index: 5;}
+
+        /* MAIN DISPLAY */
+        .main-display { padding: 12px; display: flex; flex-direction: column; gap: 15px; height: 100%; overflow: hidden; background: rgba(0,0,0,0.4);}
+        .canvas-wrapper {
+            background: #000; border: 4px solid #1e293b; border-radius: 10px;
+            position: relative; flex-grow: 1; overflow: hidden; display: flex; flex-direction: column;
+            box-shadow: inset 0 0 40px rgba(0,0,0,1), 0 10px 25px rgba(0,0,0,0.6), 0 0 0 1px #000;
+        }
+        
+        #canvas-local { width: 100%; flex: 1.45; display: block; border-bottom: 2px solid #1a1a1a; cursor: crosshair;}
+        #canvas-waterfall { width: 100%; flex: 0.8; display: block; background: #000; cursor: crosshair;}
+        .canvas-label { position: absolute; top: 10px; left: 15px; font-size: 0.8rem; color: #a7f3d0; font-family: 'Share Tech Mono', monospace; z-index: 10; text-shadow: 0 0 8px #10b981, 0 0 2px #000;}
+        
+        .vfo-passband { position: absolute; top: 0; bottom: 0; background: rgba(16, 185, 129, 0.15); border-left: 1px dashed var(--rx-color); border-right: 1px dashed var(--rx-color); pointer-events: none; z-index: 4; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.2); transition: width 0.1s, left 0.1s;}
+        .vfo-center { position: absolute; top: 0; bottom: 0; width: 1px; background: #ef4444; pointer-events: none; z-index: 5; box-shadow: 0 0 8px #ef4444;}
+        .notch-indicator { position: absolute; top: 0; bottom: 0; width: 4px; background: rgba(245, 158, 11, 0.7); border-left: 1px solid #f59e0b; pointer-events: none; z-index: 6; display: none; box-shadow: 0 0 8px #f59e0b;}
+
+        /* CONTROL PANEL */
+        .control-panel { background: linear-gradient(to right, #0b0f17, #151d2b); padding: 10px; border-left: 3px solid #000; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; box-shadow: -15px 0 40px rgba(0,0,0,0.9); z-index: 5;}
+        .control-panel::-webkit-scrollbar { width: 8px; }
+        .control-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        /* LCD DISPLAY */
+        .lcd-bezel { background: linear-gradient(180deg, #1e293b, #0f172a); padding: 12px; border-radius: 10px; box-shadow: 0 8px 25px rgba(0,0,0,0.9), inset 0 2px 3px rgba(255,255,255,0.15); border: 1px solid #000; flex-shrink: 0;}
+        .lcd { 
+            background: radial-gradient(circle at center, #062b16, #021208); border: 2px solid #000; border-radius: 6px; 
+            padding: 15px 20px; box-shadow: inset 0 0 30px rgba(0,0,0,1); display: flex; flex-direction: column; gap: 8px; 
+            position: relative; overflow: hidden;
+        }
+        
+        .lcd-top-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: -5px; z-index: 2; position: relative;}
+        .lcd-mode { color: var(--lcd-text); font-family: 'Share Tech Mono', monospace; font-size: 1.4rem; font-weight: bold; letter-spacing: 2px; text-shadow: 0 0 10px var(--lcd-text);}
+        .lcd-step { font-size: 0.9rem; color: #047857; font-weight: bold; font-family: 'Share Tech Mono', monospace;}
+        
+        .lcd-freq-container { display: flex; align-items: baseline; justify-content: flex-end; z-index: 2; position: relative;}
+        .lcd-freq-mhz { font-family: 'Share Tech Mono', monospace; font-size: 3.5rem; color: var(--lcd-highlight); font-weight: bold; text-shadow: 0 0 20px rgba(167, 243, 208, 0.7); letter-spacing: -2px;}
+        .lcd-freq-hz { font-family: 'Share Tech Mono', monospace; font-size: 2rem; color: var(--lcd-text); font-weight: bold; margin-left: 5px; text-shadow: 0 0 15px var(--lcd-text); }
+        .rit-display { font-family: 'Share Tech Mono', monospace; font-size: 0.9rem; color: #f59e0b; position: absolute; bottom: 45px; left: 20px; text-shadow: 0 0 8px #f59e0b; display: none;}
+
+        /* HIGH-RES S-METER */
+        .meter-container { margin-top: 15px; z-index: 2; position: relative;}
+        .meter-bg { height: 20px; background: #000; border-radius: 3px; position: relative; overflow: hidden; border: 1px solid #064e3b; display: flex; gap: 2px; padding: 2px; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8);}
+        .meter-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #10b981 50%, #f59e0b 80%, #ef4444 95%); transition: width 0.03s cubic-bezier(0.1, 0.9, 0.2, 1); box-shadow: 0 0 12px #10b981; }
+        .meter-peak { position: absolute; top: 2px; bottom: 2px; width: 3px; background: #fff; transition: left 0.1s; opacity: 0.9; box-shadow: 0 0 8px #fff;}
+        .meter-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: #059669; margin-top: 6px; font-weight: 900; font-family: 'Share Tech Mono', monospace;}
+
+        /* BOTONES FISICOS */
+        .ctrl-group { border: 1px solid #1e293b; border-radius: 8px; padding: 12px; background: rgba(0,0,0,0.5); box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 20px rgba(0,0,0,0.4); flex-shrink: 0;}
+        .ctrl-title { font-size: 0.75rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 15px; display: block; font-weight: 900; letter-spacing: 2px; border-bottom: 1px solid #334155; padding-bottom: 8px; text-shadow: 0 1px 2px #000;}
+        
+        .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .btn-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .btn-sm { 
+            min-height: 28px;
+            background: linear-gradient(180deg, #334155, #1e293b); color: #cbd5e1; border: 1px solid #0f172a; 
+            padding: 10px 5px; border-radius: 5px; font-size: 0.75rem; font-weight: bold; cursor: pointer; 
+            transition: 0.1s; text-shadow: 0 -1px 1px #000; box-shadow: inset 0 1px 2px rgba(255,255,255,0.15), 0 5px 8px rgba(0,0,0,0.6);
+            text-align: center; font-family: 'Segoe UI', sans-serif;
+        }
+        .btn-sm:hover { background: linear-gradient(180deg, #475569, #334155); }
+        .btn-sm:active { transform: translateY(3px); box-shadow: inset 0 3px 8px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.4); }
+        .btn-sm.active { 
+            background: linear-gradient(180deg, #d97706, #b45309); color: #fff; border-color: #78350f; 
+            box-shadow: inset 0 3px 8px rgba(0,0,0,0.6), 0 0 12px rgba(245, 158, 11, 0.5); text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+        }
+        
+        select.btn-sm { padding: 8px 5px; appearance: none; -webkit-appearance: none; outline: none; }
+        select.btn-sm option { background: #0f172a; color: #fff; }
+
+        /* KNOBS (Perillas) */
+        .knobs-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 10px; margin-top: 10px; }
+        .knob-wrapper { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .knob-label { font-size: 0.65rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; text-shadow: 0 1px 2px #000;}
+        
+        input[type=range].dial-knob { 
+            -webkit-appearance: none; background: transparent; width: 100%; height: 20px; 
+        }
+        input[type=range].dial-knob::-webkit-slider-runnable-track { 
+            width: 100%; height: 6px; background: #000; border-radius: 3px; border: 1px solid #333; box-shadow: inset 0 2px 5px rgba(0,0,0,0.9);
+        }
+        input[type=range].dial-knob::-webkit-slider-thumb { 
+            -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; 
+            background: radial-gradient(circle at 30% 30%, #94a3b8, #334155, #0f172a); margin-top: -8px; 
+            cursor: ew-resize; border: 2px solid #000; box-shadow: 0 5px 10px rgba(0,0,0,0.9), inset 0 1px 3px rgba(255,255,255,0.4); 
+        }
+
+        /* Main VFO Knob */
+        .vfo-control-wrapper { display: flex; flex-direction: column; gap: 10px; align-items: center; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 10px; border: 1px solid #1e293b; box-shadow: inset 0 8px 20px rgba(0,0,0,0.7), 0 5px 15px rgba(0,0,0,0.3); flex-shrink: 0;}
+        .vfo-wheel-container { position: relative; width: 100%; height: 50px; display: flex; justify-content: center; align-items: center;}
+        
+        .vfo-wheel { width: 100%; -webkit-appearance: none; background: transparent; position: relative; z-index: 2; height: 40px;}
+        .vfo-wheel::-webkit-slider-runnable-track { height: 18px; background: repeating-linear-gradient(90deg, #0f172a, #0f172a 4px, #000 4px, #000 8px); border-radius: 9px; border: 2px solid #1e293b; box-shadow: 0 6px 12px rgba(0,0,0,0.9), inset 0 2px 5px rgba(0,0,0,0.5); }
+        .vfo-wheel::-webkit-slider-thumb { 
+            -webkit-appearance: none; width: 65px; height: 38px; border-radius: 6px; margin-top: -12px; 
+            background: linear-gradient(180deg, #f1f5f9, #94a3b8, #334155); border: 2px solid #000; 
+            cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.9), inset 0 2px 5px rgba(255,255,255,0.6);
+            background-image: radial-gradient(circle at center, rgba(0,0,0,0.4) 0%, transparent 50%);
+        }
+        
+        .step-btns { display: flex; gap: 10px; width: 100%; justify-content: center;}
+        .step-btns button { flex: 1; padding: 10px; font-size: 0.75rem; background: linear-gradient(180deg, #1e293b, #0f172a);}
+
+        /* PTT y CW Táctico */
+        .tx-controls-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 15px; background: repeating-linear-gradient(45deg, #1a0505, #1a0505 10px, #2a0808 10px, #2a0808 20px); border-radius: 8px; border: 2px solid #450a0a; box-shadow: inset 0 0 30px rgba(0,0,0,0.9); flex-shrink: 0;}
+        .ptt-btn { 
+            background: linear-gradient(180deg, #dc2626, #991b1b); color: #fee2e2; border: 2px solid #000; 
+            padding: 15px 10px; width: 100%; border-radius: 6px; font-size: 1.1rem; font-weight: 900; 
+            text-transform: uppercase; cursor: pointer; transition: 0.1s; box-shadow: inset 0 2px 5px rgba(255,255,255,0.3), 0 10px 20px rgba(0,0,0,0.8); 
+            text-shadow: 0 2px 4px #000; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px;
+        }
+        .ptt-btn:active, .ptt-btn.transmitting { 
+            background: linear-gradient(180deg, #ef4444, #dc2626); color: #fff; border-color: #fca5a5; 
+            box-shadow: inset 0 5px 15px rgba(0,0,0,0.6), 0 0 35px rgba(239, 68, 68, 0.7); transform: translateY(3px);
+        }
+        .cw-key-btn {
+            background: linear-gradient(180deg, #52525b, #27272a); color: #e4e4e7; border: 2px solid #000; 
+            padding: 15px 10px; width: 100%; border-radius: 6px; font-size: 1.1rem; font-weight: 900; 
+            text-transform: uppercase; cursor: pointer; transition: 0.05s; box-shadow: inset 0 2px 5px rgba(255,255,255,0.2), 0 10px 20px rgba(0,0,0,0.8); 
+            text-shadow: 0 2px 4px #000; font-family: 'Share Tech Mono', monospace; letter-spacing: 1px;
+        }
+        .cw-key-btn:active {
+            background: linear-gradient(180deg, #a1a1aa, #52525b); color: #fff; border-color: #fff; 
+            box-shadow: inset 0 5px 15px rgba(0,0,0,0.6), 0 0 25px rgba(255, 255, 255, 0.5); transform: translateY(3px);
+        }
+        
+        /* LOG / MONITOR */
+        .station-log { 
+            height: 100px; overflow-y: auto; font-size: 0.75rem; color: #9ca3af; background: #050505; 
+            border: 2px solid #1e293b; padding: 5px; border-radius: 4px; box-shadow: inset 0 8px 20px rgba(0,0,0,0.9);
+            font-family: 'Share Tech Mono', monospace; position: relative;
+        }
+        .station-log::after {
+            content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 20%); pointer-events: none;
+        }
+        .station-log::-webkit-scrollbar { width: 6px; }
+        .station-log::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .log-entry { padding: 8px; border-bottom: 1px solid #1e293b; cursor: pointer; transition: background 0.2s; line-height: 1.4; border-left: 3px solid transparent;}
+        .log-entry:hover { background: #111827; border-left-color: var(--accent);}
+        .log-header { display: flex; justify-content: space-between; margin-bottom: 3px; align-items: center;}
+        .log-freq { color: var(--accent); font-weight: bold; font-size: 0.9rem; text-shadow: 0 0 5px rgba(245, 158, 11, 0.4);}
+        .log-mode { padding: 2px 6px; background: #334155; border-radius: 2px; font-size: 0.65rem; font-weight: bold; color: #fff; letter-spacing: 1px;}
+        .log-mode.rtty { background: var(--rtty-color); color: #000;}
+        .log-mode.cw { background: #4f46e5; }
+        .log-mode.carrier { background: #ef4444; }
+        .log-mode.ft8 { background: #db2777; }
+        .log-desc { color: #cbd5e1; }
+        .log-active { color: #a7f3d0; font-weight: bold; text-shadow: 0 0 8px #10b981;}
+
+        /* FT8 Console */
+        .ft8-console-wrapper { display: flex; flex-direction: column; gap: 5px; height: 100%;}
+        .ft8-status-bar { background: #1e293b; padding: 4px 8px; border-radius: 4px; font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: #cbd5e1; display: flex; justify-content: space-between; border: 1px solid #334155;}
+        .ft8-tx-next { color: #f472b6; font-weight: bold; }
+        .ft8-console {
+            background: #000; border: 2px inset #334155; flex-grow: 1; padding: 8px; 
+            font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: #10b981;
+            overflow-y: auto; text-shadow: 0 0 4px rgba(16, 185, 129, 0.5); border-radius: 4px;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .ft8-console::-webkit-scrollbar { width: 6px; }
+        .ft8-console::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .ft8-msg-row { display: grid; grid-template-columns: 46px 30px 30px 42px 1fr; border-bottom: 1px dotted #1e293b; padding: 1px 0; cursor: pointer; font-size: 0.68rem;}
+        .ft8-head { position: sticky; top: 0; z-index: 3; background:#020617; color:#93c5fd; font-weight:700; border-bottom:1px solid #334155; }
+        .ft8-msg-row:hover { background: #111827; }
+        .ft8-tx-line { color: #ef4444; text-shadow: 0 0 4px rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.05); }
+        .ft8-rx-line { color: #f59e0b; text-shadow: 0 0 4px rgba(245, 158, 11, 0.5); }
+        .ft8-sys-line { color: #94a3b8; font-style: italic; border-bottom: 1px dotted #1e293b;}
+
+    </style>
+</head>
+<body>
+
+    <div id="power-overlay">
+        <h1 style="color:#fff; margin-bottom:10px; font-size: 3rem; font-family: 'Share Tech Mono', monospace; text-shadow: 0 0 20px #f59e0b;">IA SDR <span style="color:#f59e0b;">ATMOSFERA PRO</span></h1>
+        <p style="color:#94a3b8; max-width:700px; margin-bottom:30px; font-size: 1.1rem; line-height: 1.6;">
+            DSP Atmosférico Multi-Primo para Ruido Orgánico, Físicas de Propagación (Potencia/Distancia/Antena), Decodificador CW Interactivo y Motor FT8 Real (WSJT-X Sim).
+        </p>
+        <button class="btn-power" id="btn-power">PWR ON</button>
+        <p style="margin-top: 30px; color: #475569; font-size: 0.8rem;">Requiere permisos de audio para iniciar el motor DSP WebAudio.</p>
+    </div>
+
+    <div class="rig-container">
+        <div class="screw s-tl"></div><div class="screw s-tr"></div>
+        <div class="screw s-bl"></div><div class="screw s-br"></div>
+
+        <div class="header">
+            <div class="brand">IA<span>SDR</span><span class="pro">ATMOSFERA PRO</span></div>
+            <div class="header-tools">
+                <div class="clock" id="atm-status" style="font-size:0.85rem; color:#93c5fd;">SFI 120 | Kp 2 | Noche</div>
+                <div class="clock" id="utc-clock">00:00:00 UTC</div>
+                <div class="status-indicators">
+                    <div class="indicator active rx" id="ind-rx">RX</div>
+                    <div class="indicator" id="ind-tx">TX</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="global-scope">
+            <div class="glass-reflection"></div>
+            <div class="scanlines"></div>
+            <span>PANADAPTER GLOBAL 0-30 MHz</span>
+            <canvas id="canvas-global"></canvas>
+            <div class="global-cursor" id="global-cursor"></div>
+        </div>
+
+        <div class="main-display">
+            <div class="canvas-wrapper">
+                <div class="glass-reflection"></div>
+                <div class="scanlines"></div>
+                <span class="canvas-label">ESPECTRO IF & WATERFALL (±12 kHz)</span>
+                <canvas id="canvas-local"></canvas>
+                <canvas id="canvas-local-waterfall"></canvas>
+                
+                <div class="vfo-passband" id="vfo-passband"></div>
+                <div class="vfo-center" id="vfo-center"></div>
+                <div class="notch-indicator" id="notch-indicator"></div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="ctrl-group" style="margin-bottom: 0; padding: 15px; background: rgba(0,0,0,0.6);">
+                    <span class="ctrl-title" style="margin-bottom: 10px; color: #f59e0b;">MONITOR DE RED / CLUSTER</span>
+                    <div class="station-log" id="station-log"></div>
+                </div>
+                <div class="ctrl-group" style="margin-bottom: 0; padding: 15px; background: rgba(0,0,0,0.6);">
+                    <span class="ctrl-title" style="margin-bottom: 5px; color: #db2777;">TERMINAL FT8 / DATA (WSJT-X)</span>
+                    <div class="ft8-console-wrapper">
+                        <div class="ft8-status-bar" style="position:sticky; top:0; z-index:2;">
+                            <span id="ft8-cycle-timer">Seq: 0.0s</span>
+                            <span class="ft8-tx-next" id="ft8-next-msg">Auto-TX: OFF</span>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap:6px;">
+                            <input id="ft8-custom-msg" maxlength="37" placeholder="CQ IA1SDR IM55 o CALL IA1SDR -10" style="background:#0b1020; color:#e2e8f0; border:1px solid #334155; border-radius:4px; padding:6px; font-family: 'Share Tech Mono', monospace;">
+                            <button class="btn-sm" id="btn-ft8-custom" style="padding:6px 10px;">TX MSG</button>
+                        </div>
+                        <div class="ft8-console" id="data-console">
+                            <div class="ft8-msg-row ft8-head"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>
+                            <div class="ft8-sys-line">[SYS] Iniciando decodificador WSJT-X integrado...</div>
+                            <div class="ft8-sys-line">[SYS] Click en un mensaje CQ para responder.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="lcd-bezel">
+                <div class="lcd">
+                    <div class="glass-reflection" style="height: 50%;"></div>
+                    <div class="lcd-top-row">
+                        <span class="lcd-mode" id="ui-mode">LSB</span>
+                        <span class="lcd-step" id="ui-step-disp">STP: 100Hz</span>
+                        <span style="font-size: 0.9rem; color: #34d399; font-weight:bold; font-family:'Share Tech Mono';" id="ui-bw">BW: 2.7k</span>
+                    </div>
+                    <div class="lcd-freq-container">
+                        <span class="lcd-freq-mhz" id="ui-freq-mhz">07.150</span>
+                        <span class="lcd-freq-hz" id="ui-freq-hz">.00</span>
+                    </div>
+                    <div class="rit-display" id="ui-rit">RIT: +0.00k</div>
+                    <div class="meter-container">
+                        <div class="meter-bg">
+                            <div class="meter-fill" id="ui-meter"></div>
+                            <div class="meter-peak" id="ui-meter-peak"></div>
+                        </div>
+                        <div class="meter-labels">
+                            <span>S1</span><span>S3</span><span>S5</span><span>S7</span><span>S9</span><span>+20</span><span>+40</span><span>ALC/PWR</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vfo-control-wrapper">
+                <span class="ctrl-title" style="border:none; margin:0; font-size: 0.65rem; color:#64748b;">MAIN DIAL (VFO)</span>
+                <div class="vfo-wheel-container">
+                    <input type="range" class="vfo-wheel" id="vfo-knob" min="-100" max="100" value="0" step="1">
+                </div>
+                <div class="step-btns">
+                    <button class="btn-sm" onclick="setStep(10)">10Hz</button>
+                    <button class="btn-sm" onclick="setStep(50)">50Hz</button>
+                    <button class="btn-sm active" id="btn-step-100" onclick="setStep(100)">100Hz</button>
+                    <button class="btn-sm" onclick="setStep(1000)">1kHz</button>
+                </div>
+            </div>
+
+            <div class="ctrl-group">
+                <span class="ctrl-title">FÍSICA DE PROPAGACIÓN & TX</span>
+                <div class="knobs-container" style="grid-template-columns: repeat(2, 1fr); margin-top: 5px; gap: 10px;">
+                    <div class="knob-wrapper">
+                        <span class="knob-label" style="color: #ef4444;">POTENCIA TX</span>
+                        <select id="tx-power" class="btn-sm" style="width: 100%;">
+                            <option value="0.001">1 mW</option>
+                            <option value="1">1 W</option>
+                            <option value="5">5 W (QRP)</option>
+                            <option value="100" selected>100 W</option>
+                            <option value="1500">1.5 kW</option>
+                            <option value="10000">10 kW</option>
+                        </select>
+                    </div>
+                    <div class="knob-wrapper">
+                        <span class="knob-label" style="color: #3b82f6;">ANTENA (Ganancia)</span>
+                        <select id="ant-type" class="btn-sm" style="width: 100%;">
+                            <option value="0">Isotrópica (0 dBi)</option>
+                            <option value="1">Vertical (1 dBi)</option>
+                            <option value="2.15" selected>Dipolo (2.15 dBi)</option>
+                            <option value="10">Yagi Direccional (10 dBi)</option>
+                            <option value="3">Hilo Largo (3 dBi)</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top: 12px;">
+                    <span class="knob-label">BANDA ANTENA / PROPAGACIÓN</span>
+                    <select id="band-profile" class="btn-sm" style="width: 100%; margin-top: 5px;">
+                        <option value="160m">160m (1.8 MHz)</option>
+                        <option value="80m">80m (3.5 MHz)</option>
+                        <option value="40m" selected>40m (7 MHz)</option>
+                        <option value="20m">20m (14 MHz)</option>
+                        <option value="10m">10m (28 MHz)</option>
+                    </select>
+                </div>
+                <div style="margin-top: 12px;">
+                    <span class="knob-label">DISTANCIA OBJETIVO: <span id="dist-val" style="color:#a7f3d0;">5000 km</span></span>
+                    <input type="range" class="dial-knob" id="tx-dist" min="1" max="20000" value="5000" style="width: 100%; margin-top: 5px;">
+                </div>
+            </div>
+
+            <div class="ctrl-group">
+                <span class="ctrl-title">PRESETS & MODOS</span>
+                <div class="btn-grid">
+                    <button class="btn-sm" onclick="tuneTo(3650000, 'LSB')">80m SSB</button>
+                    <button class="btn-sm active" id="btn-band-40ssb" onclick="tuneTo(7150000, 'LSB')">40m SSB</button>
+                    <button class="btn-sm" onclick="tuneTo(14074000, 'USB')" style="color:#f472b6; border-color:#831843;">20m FT8</button>
+                    <button class="btn-sm" onclick="tuneTo(14250000, 'USB')">20m SSB</button>
+                    <button class="btn-sm" onclick="tuneTo(28400000, 'USB')">10m SSB</button>
+                    <button class="btn-sm" onclick="tuneTo(1200000, 'AM')">BC AM</button>
+                </div>
+                <button class="btn-sm" id="btn-ft8-mode" style="margin-top:8px; width:100%; background:linear-gradient(180deg,#ec4899,#9d174d); color:#fff;">FT8 Mode</button>
+                <div class="btn-grid-4" style="margin-top: 12px;">
+                    <button class="btn-sm active" id="btn-usb">USB</button>
+                    <button class="btn-sm" id="btn-lsb">LSB</button>
+                    <button class="btn-sm" id="btn-cw">CW</button>
+                    <button class="btn-sm" id="btn-am">AM</button>
+                </div>
+            </div>
+
+            <div class="ctrl-group">
+                <span class="ctrl-title">DSP, SQL & MON</span>
+                <div class="knobs-container">
+                    <div class="knob-wrapper">
+                        <span class="knob-label">AF GAIN</span>
+                        <input type="range" class="dial-knob" id="af-gain" min="0" max="100" value="70">
+                    </div>
+                    <div class="knob-wrapper">
+                        <span class="knob-label">RF GAIN</span>
+                        <input type="range" class="dial-knob" id="rf-gain" min="0" max="100" value="100">
+                    </div>
+                    <div class="knob-wrapper">
+                        <span class="knob-label" style="color: #10b981;">SQUELCH</span>
+                        <input type="range" class="dial-knob" id="sql-level" min="0" max="100" value="0">
+                    </div>
+                    <div class="knob-wrapper">
+                        <span class="knob-label" style="color: #f59e0b;">RIT / CLAR</span>
+                        <input type="range" class="dial-knob" id="rit-offset" min="-2000" max="2000" value="0">
+                    </div>
+                    <div class="knob-wrapper">
+                        <span class="knob-label" style="color: #ef4444;">MONITOR</span>
+                        <input type="range" class="dial-knob" id="mon-level" min="0" max="100" value="50">
+                    </div>
+                    <div class="knob-wrapper">
+                        <span class="knob-label" style="color: #34d399;">FILT BW</span>
+                        <input type="range" class="dial-knob" id="filt-bw" min="100" max="10000" step="50" value="2700">
+                    </div>
+                </div>
+                
+                <div style="margin-top: 20px; border-top: 1px solid #334155; padding-top: 15px; display: flex; align-items: center; gap: 15px;">
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:5px;">
+                        <span class="knob-label" style="color:#eab308; font-size: 0.65rem;">NOTCH</span>
+                        <input type="checkbox" id="notch-toggle" style="accent-color: #eab308; cursor:pointer; width: 18px; height: 18px;">
+                    </div>
+                    <input type="range" class="dial-knob" id="notch-freq" min="300" max="3000" value="1000" disabled style="flex-grow:1;">
+                </div>
+            </div>
+
+            <div class="tx-controls-wrapper">
+                <button class="ptt-btn" id="btn-ptt" style="grid-column: span 2;">VOICE MIC PTT</button>
+                <button class="cw-key-btn" id="btn-cw-key">KEYER CW</button>
+                <button class="btn-sm" id="btn-tx-ft8" style="background: linear-gradient(180deg, #db2777, #9d174d); border-color:#000; color:#fff; font-size: 1rem; cursor: pointer;">Enable FT8 TX</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let actx;
+        const MAX_FREQ = 30000000;
+        const IF_CENTER = 15000; 
+        const IF_BANDWIDTH = 12000; 
+        
+        let vfoFreqTarget = 7074000; 
+        let vfoFreqActual = 7074000; 
+        let currentMode = 'USB';
+        let filterBw = 2700; 
+        let isTransmitting = false;
+        let vfoStep = 100;
+        let ritOffset = 0;
+        let isSquelchMuted = false;
+
+        let ifBusSum, noiseSources = [], noiseGainNode, rxMasterGain, agcNode, localAnalyser, qrnGain, rxNotch;
+        let rxVfoSource, rxFilterI = [], rxFilterQ = [], rxSidebandInverter, rxIqCombiner;
+        
+        let txMicNode, txMasterGain, txBaseBandFilter, squelchGate;
+        let txDrive, txEq, txComp; 
+        let txDataGain, txCwOsc, txCwEnv; 
+        let txMonitorGain, txAnalyser;
+        let txSpectrumData;
+        
+        let qsoNetworks = [];
+        let voiceBuffers = []; 
+        let musicBuffer, rttyBuffer, qrnBuffer;
+        
+        const cvGlobal = document.getElementById('canvas-global'); const ctxGlobal = cvGlobal.getContext('2d', { alpha: false });
+        const cvLocal = document.getElementById('canvas-local'); const ctxLocal = cvLocal.getContext('2d', { alpha: false });
+        const cvWaterfall = document.getElementById('canvas-local-waterfall'); const ctxWaterfall = cvWaterfall.getContext('2d', { willReadFrequently: true, alpha: false });
+        
+        let tempCanvas = document.createElement('canvas'); let tempCtx = tempCanvas.getContext('2d', { alpha: false });
+        let localSpectrumData; let colormap = []; 
+
+        const morseDict = { 'A':'.-', 'B':'-...', 'C':'-.-.', 'D':'-..', 'E':'.', 'F':'..-.', 'G':'--.', 'H':'....', 'I':'..', 'J':'.---', 'K':'-.-', 'L':'.-..', 'M':'--', 'N':'-.', 'O':'---', 'P':'.--.', 'Q':'--.-', 'R':'.-.', 'S':'...', 'T':'-', 'U':'..-', 'V':'...-', 'W':'.--', 'X':'-..-', 'Y':'-.--', 'Z':'--..', '0':'-----', '1':'.----', '2':'..---', '3':'...--', '4':'....-', '5':'.....', '6':'-....', '7':'--...', '8':'---..', '9':'----.', ' ':' ', '?':'..--..', '/':'-..-.' };
+        const reverseMorseDict = Object.fromEntries(Object.entries(morseDict).map(([k, v]) => [v, k]));
+
+        let peakSMeter = 0; let peakHoldTime = 0; let currentSMeterRaw = 0;
+
+        let myCallsign = "IA1SDR";
+        let myGrid = "IM55";
+        let cwDecodeBuffer = [];
+        let cwLastStateChange = 0;
+        let cwIsDown = false;
+
+        // Físicas y propagación
+        let userTxPower = 100;
+        let userAntGain = 2.15;
+        let targetDistanceKm = 5000;
+        let atmos = { sfi: 120, kp: 2, night: false, storm: 0.1 };
+
+        // === VARIABLES ESTADO FT8 REAL ===
+        let ft8CycleTime = 0;
+        let ft8DecodedThisCycle = false;
+        let ft8CurrentSlot = -1;
+        let ft8EmptyDecodeCycles = 0;
+        let userFt8State = 'IDLE'; // IDLE, TX_CQ, TX_REPLY
+        let userFt8TargetCall = '';
+        let userFt8TargetGrid = '';
+        let userFt8Report = '';
+        let userFt8TxMessage = '';
+        let userFt8AutoSeq = 0; // 0=CQ, 1=Report, 2=RReport, 3=RR73, 4=73
+        let ft8BasebandOffsetTx = 1500; 
+        let userFt8CustomMessage = '';
+        let ft8StrictMode = true;
+        let ft8SymbolRegistry = new Map();
+        const bandProfiles = {
+            '160m': {center:1900000, qrn:1.6, fade:0.55},
+            '80m': {center:3700000, qrn:1.2, fade:0.35},
+            '40m': {center:7074000, qrn:1.0, fade:0.22},
+            '20m': {center:14074000, qrn:0.65, fade:0.15},
+            '10m': {center:28400000, qrn:0.35, fade:0.08}
+        };
+        let currentBandProfile = '40m';
+
+        document.getElementById('btn-power').addEventListener('click', async () => {
+            const overlay = document.getElementById('power-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 1000);
+
+            actx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000, latencyHint: 'interactive' });
+            
+            buildColormap();
+            
+            voiceBuffers.push(generateProceduralSpeech(actx, 110, 1.0));  
+            voiceBuffers.push(generateProceduralSpeech(actx, 160, 1.2)); 
+            voiceBuffers.push(generateProceduralSpeech(actx, 220, 1.1)); 
+            voiceBuffers.push(generateProceduralSpeech(actx, 90, 0.9)); 
+            
+            musicBuffer = generateProceduralMusic(actx);
+            rttyBuffer = generateProceduralRTTY(actx);
+            qrnBuffer = createPinkNoise(actx, 1.0); 
+            
+            setupCoreAudio();
+            buildWeaverRX();
+            buildWeaverTX();
+            populateBotNetworks();
+            setupUIEvents();
+            tuneTo(7074000, 'USB');
+            filterBw = 3000;
+            document.getElementById('filt-bw').value = filterBw;
+            document.getElementById('sql-level').value = 0;
+            updateBwDisplay();
+            
+            updateBwDisplay();
+            updateVFO();
+            setInterval(updateClock, 1000);
+            updateClock();
+            requestAnimationFrame(renderGraphics);
+            setInterval(botEngineLoop, 50); 
+            setInterval(simulateQRN, 300); 
+            setInterval(updateAtmosphereModel, 2000);
+            updateAtmosphereModel();
+        });
+
+        function updateClock() {
+            const now = new Date();
+            const h = String(now.getUTCHours()).padStart(2, '0');
+            const m = String(now.getUTCMinutes()).padStart(2, '0');
+            const s = String(now.getUTCSeconds()).padStart(2, '0');
+            document.getElementById('utc-clock').innerText = `${h}:${m}:${s} UTC`;
+        }
+        function updateAtmosphereModel() {
+            const now = new Date();
+            const hour = now.getUTCHours();
+            const night = (hour < 5 || hour > 18);
+            const dayFactor = night ? 0.7 : 1.0;
+            atmos.night = night;
+            atmos.sfi = Math.floor(95 + (Math.sin(now.getTime()/7200000) + 1) * 35 * dayFactor);
+            atmos.kp = Math.max(1, Math.min(7, Math.floor(1 + (Math.cos(now.getTime()/1800000) + 1) * 2.6)));
+            atmos.storm = Math.max(0, (atmos.kp - 3) / 6);
+            document.getElementById('atm-status').innerText = `SFI ${atmos.sfi} | Kp ${atmos.kp} | ${night ? 'Noche' : 'Día'}`;
+        }
+
+        function printToConsole(text, type='sys') {
+            const cons = document.getElementById('data-console');
+            if(type === 'sys') {
+                cons.innerHTML += `<div class="ft8-sys-line">${text}</div>`;
+            } else {
+                cons.innerHTML += text; // text ya viene formateado como row para FT8
+            }
+            const rows = cons.querySelectorAll('.ft8-msg-row:not(.ft8-head), .ft8-sys-line');
+            if(rows.length > 120) {
+                const removeCount = rows.length - 120;
+                for(let i=0; i<removeCount; i++) rows[i].remove();
+            }
+            cons.scrollTop = cons.scrollHeight;
+        }
+
+        // ================= SONIDO PROCEDURAL AVANZADO =================
+        
+        function makeDistortionCurve(amount) {
+            let k = typeof amount === 'number' ? amount : 50;
+            let n_samples = 44100;
+            let curve = new Float32Array(n_samples);
+            let deg = Math.PI / 180;
+            for (let i = 0; i < n_samples; ++i) {
+                let x = i * 2 / n_samples - 1;
+                curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+            }
+            return curve;
+        }
+
+        function createPinkNoise(context, lengthSeconds) {
+            let bufferSize = Math.floor(context.sampleRate * lengthSeconds);
+            let buffer = context.createBuffer(1, bufferSize, context.sampleRate);
+            let output = buffer.getChannelData(0);
+            let b0=0, b1=0, b2=0, b3=0, b4=0, b5=0, b6=0;
+            for (let i = 0; i < bufferSize; i++) {
+                let white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                output[i] *= 0.05; 
+                b6 = white * 0.115926;
+            }
+            return buffer;
+        }
+
+        function playRelayClick() {
+            if(!actx) return;
+            let osc = actx.createOscillator();
+            let gain = actx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(200, actx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, actx.currentTime + 0.015);
+            gain.gain.setValueAtTime(0.3, actx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.015);
+            osc.connect(gain); gain.connect(actx.destination);
+            osc.start(); osc.stop(actx.currentTime + 0.02);
+        }
+
+        function generateProceduralSpeech(context, basePitch, speedMultiplier) {
+            const sr = context.sampleRate; const len = sr * 10; 
+            const buf = context.createBuffer(1, len, sr);
+            const data = buf.getChannelData(0);
+            let phase = 0, env = 0, tEnv = 0;
+            const envRate = (sr / 8) / speedMultiplier;
+            for (let i = 0; i < len; i++) {
+                if (i % Math.floor(envRate) === 0) tEnv = Math.random() < 0.2 ? 0 : Math.random() * 0.8 + 0.2;
+                env += (tEnv - env) * 0.003; 
+                let freq = basePitch + Math.sin(i/sr * 5 * speedMultiplier) * 20;
+                phase += freq / sr;
+                let osc = Math.sin(phase * 2 * Math.PI) + 0.5 * Math.sin(phase * 4 * Math.PI) + 0.2 * Math.sin(phase * 6 * Math.PI);
+                let noise = (Math.random() * 2 - 1) * 0.2;
+                data[i] = (osc + noise) * env * 0.4;
+            }
+            return buf;
+        }
+
+        function generateProceduralMusic(context) {
+            const sr = context.sampleRate; const len = sr * 12; 
+            const buf = context.createBuffer(1, len, sr); const data = buf.getChannelData(0);
+            const chords = [ [261.6, 329.6, 392.0], [349.2, 440.0, 523.2], [392.0, 493.8, 587.3], [261.6, 329.6, 392.0] ];
+            let phase = [0,0,0];
+            for (let i = 0; i < len; i++) {
+                let t = i / sr; let chord = chords[Math.floor(t / 3) % chords.length];
+                let sample = 0;
+                for(let j=0; j<3; j++) { phase[j] += chord[j] / sr; sample += Math.sin(phase[j] * 2 * Math.PI) * 0.2; }
+                data[i] = sample * 0.4;
+            }
+            return buf;
+        }
+
+        function generateProceduralRTTY(context) {
+            const sr = context.sampleRate; const len = sr * 8; 
+            const buf = context.createBuffer(1, len, sr); const data = buf.getChannelData(0);
+            const baudDuration = 1 / 45.45; const samplesPerBit = sr * baudDuration;
+            let phase = 0, currentBit = 1;
+            for (let i = 0; i < len; i++) {
+                if (i % Math.floor(samplesPerBit) === 0) currentBit = Math.random() > 0.5 ? 1 : 0;
+                let freqOffset = currentBit === 1 ? 0 : 170; 
+                phase += freqOffset / sr;
+                data[i] = Math.sin(phase * 2 * Math.PI) * 0.8; 
+            }
+            return buf;
+        }
+
+        
+        function normalizeFT8Message(raw) {
+            const msg = (raw || '').toUpperCase().trim().replace(/\s+/g, ' ').slice(0, 37);
+            if(!ft8StrictMode) return msg;
+            const cq = /^CQ [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+            const grid = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+            const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?(0?[1-9]|1[0-9]|2[0-9])$/;
+            const rr73 = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} (RR73|73)$/;
+            return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
+        }
+
+        // Generador de Forma de Onda FT8 (CPFSK 8-Tone)
+        function ft8MessageToTones(message = '', dataSeed = 0) {
+            const tones = [];
+            const costas = [3, 1, 4, 0, 6, 5, 2];
+            const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
+            let seed = 2166136261 >>> 0;
+            for(let i = 0; i < msg.length; i++) { seed = Math.imul(seed ^ msg.charCodeAt(i), 16777619) >>> 0; }
+            seed ^= Math.floor((dataSeed || 0) * 1e6) >>> 0;
+            const nextTone = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed & 7; };
+            for(let i = 0; i < 79; i++) {
+                if(i < 7) tones.push(costas[i]);
+                else if(i >= 36 && i < 43) tones.push(costas[i - 36]);
+                else if(i >= 72) tones.push(costas[i - 72]);
+                else tones.push(nextTone());
+            }
+            ft8SymbolRegistry.set(tones.join(','), msg);
+            return tones;
+        }
+        function decodeFT8FromTones(tones) {
+            if(!Array.isArray(tones) || tones.length !== 79) return '';
+            return ft8SymbolRegistry.get(tones.join(',')) || '';
+        }
+        function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
+            const sr = context.sampleRate;
+            const symbolTime = 0.160; 
+            const totalSymbols = 79;
+            const len = Math.floor(sr * symbolTime * totalSymbols);
+            const buf = context.createBuffer(1, len, sr);
+            const data = buf.getChannelData(0);
+
+            let phase = 0;
+            const tones = ft8MessageToTones(message, isBot ? dataSeed : Math.random());
+
+            for(let i=0; i<len; i++) {
+                let t = i / sr;
+                let symbolIdx = Math.floor(t / symbolTime);
+                if (symbolIdx >= totalSymbols) break;
+
+                let toneValue = tones[symbolIdx];
+
+                let freq = audioOffsetHz + (toneValue * 6.25);
+                phase += (2 * Math.PI * freq) / sr;
+                if (phase > 2 * Math.PI) phase -= 2 * Math.PI;
+
+                let env = 1.0;
+                if(i < 500) env = i/500;
+                if(i > len-500) env = (len-i)/500;
+
+                data[i] = Math.sin(phase) * 0.8 * env;
+            }
+            return buf;
+        }
+
+        function genCall() {
+            const prefixes = ['K','N','W','AA','AB','AC','AD','AE','AF','AG','EA','F','DL','I','JA','VK','PY','LU'];
+            const prefix = prefixes[Math.floor(Math.random()*prefixes.length)];
+            const digit = Math.floor(Math.random()*10);
+            const sufLen = Math.random() > 0.35 ? 3 : 2;
+            let suffix = '';
+            for(let i=0;i<sufLen;i++) suffix += String.fromCharCode(65 + Math.floor(Math.random()*26));
+            return `${prefix}${digit}${suffix}`;
+        }
+        function genGrid() {
+            const A = String.fromCharCode(65 + Math.floor(Math.random()*18));
+            const B = String.fromCharCode(65 + Math.floor(Math.random()*18));
+            return `${A}${B}${Math.floor(Math.random()*10)}${Math.floor(Math.random()*10)}`;
+        }
+        function genFT8Report() {
+            const value = Math.floor(Math.random()*24) + 1;
+            return `-${String(value).padStart(2, '0')}`;
+        }
+
+        function populateBotNetworks() {
+            // CW y SSB Redes
+            for(let i=0; i<15; i++) {
+                qsoNetworks.push({
+                    id: 'net_cw_'+i, freq: 3500000 + Math.random()*11000000, type: 'CW_QSO', mode: 'CW',
+                    bots: [ {call: genCall(), pwr: 0.8}, {call: genCall(), pwr: 0.4} ],
+                    state: 'IDLE', timer: Math.random()*10, activeBotIdx: 0, wpm: 12 + Math.random()*18,
+                    fadingRates: [0.1+Math.random()*0.2, 0.5], fadingPhases: [Math.random()*Math.PI, 0], activeNodes: null
+                });
+            }
+
+            const ssbRanges = [ [3600000, 3800000, 'LSB'], [7100000, 7200000, 'LSB'], [14150000, 14300000, 'USB'], [28300000, 28500000, 'USB'] ];
+            ssbRanges.forEach(band => {
+                for(let i=0; i<10; i++) {
+                    let bots = []; let numBots = Math.random()>0.8 ? 3 : 2;
+                    for(let b=0; b<numBots; b++) bots.push({call: genCall(), pwr: 0.3 + Math.random()*0.7});
+                    qsoNetworks.push({
+                        id: 'net_ssb_'+Math.random(), freq: band[0] + Math.random()*(band[1]-band[0]), type: 'SSB_QSO', mode: band[2],
+                        bots: bots, state: 'IDLE', timer: Math.random()*15, activeBotIdx: 0,
+                        fadingRates: [0.05+Math.random()*0.2, 0.2+Math.random()*0.4], fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI],
+                        activeNodes: null
+                    });
+                }
+            });
+
+            // FT8 Bots on 20m (14.074 MHz) y 40m (7.074 MHz)
+            const ft8Freqs = [14074000, 14074000, 14074000, 7074000, 7074000];
+            for(let i=0; i<60; i++) {
+                let offset = 300 + Math.random()*2200; 
+                let bfreq = ft8Freqs[i % ft8Freqs.length];
+                qsoNetworks.push({
+                    id: 'net_ft8_'+i, freq: bfreq, type: 'FT8', mode: 'USB', basebandOffset: offset,
+                    bots: [ {call: genCall(), grid: genGrid(), pwr: 0.2 + Math.random()*0.8, seed: Math.random(), ft8State: 'CQ', ft8Target: '', lastMsg:''} ], 
+                    state: 'IDLE', timer: 0, activeBotIdx: 0,
+                    fadingRates: [0.05, 0.1], fadingPhases: [Math.random()*Math.PI, 0], activeNodes: null,
+                    currentMessage: ''
+                });
+            }
+
+            for(let i=0; i<15; i++) {
+                qsoNetworks.push({
+                    id: 'net_am_'+i, freq: 500000 + Math.random()*1200000, type: 'AM_BROADCAST', mode: 'AM',
+                    bots: [ {call: `Radio ${i+1}`, pwr: 1.0} ], state: 'TX', timer: 99999, activeBotIdx: 0,
+                    fadingRates: [0.02, 0], fadingPhases: [0, 0], activeNodes: null
+                });
+            }
+        }
+
+        // ================= DSP WEBAUDIO REALISTA =================
+
+        function setupCoreAudio() {
+            ifBusSum = actx.createGain(); ifBusSum.gain.value = 1.0;
+            localAnalyser = actx.createAnalyser(); localAnalyser.fftSize = 4096; localAnalyser.smoothingTimeConstant = 0.5;
+            ifBusSum.connect(localAnalyser); 
+
+            noiseGainNode = actx.createGain(); noiseGainNode.gain.value = 0.4;
+            noiseGainNode.connect(ifBusSum);
+            
+            const primes = [2.11, 3.17, 5.03];
+            primes.forEach(p => {
+                let ns = actx.createBufferSource();
+                ns.buffer = createPinkNoise(actx, p);
+                ns.loop = true;
+                let fBand = actx.createBiquadFilter(); fBand.type = 'bandpass'; fBand.frequency.value = 2500; fBand.Q.value = 0.3;
+                ns.connect(fBand); fBand.connect(noiseGainNode);
+                ns.start();
+                noiseSources.push(ns);
+            });
+
+            qrnGain = actx.createGain(); qrnGain.gain.value = 0;
+            let qrnOsc = actx.createBufferSource(); 
+            qrnOsc.buffer = qrnBuffer; 
+            qrnOsc.loop = true;
+            let qrnFilter = actx.createBiquadFilter(); qrnFilter.type = 'lowpass'; qrnFilter.frequency.value = 1800;
+            qrnOsc.connect(qrnFilter); qrnFilter.connect(qrnGain); qrnGain.connect(ifBusSum);
+            qrnOsc.start();
+
+            squelchGate = actx.createGain(); squelchGate.gain.value = 1.0;
+
+            agcNode = actx.createDynamicsCompressor();
+            agcNode.threshold.value = -45; agcNode.knee.value = 10; agcNode.ratio.value = 15;
+            agcNode.attack.value = 0.002; agcNode.release.value = 0.4; 
+
+            rxNotch = actx.createBiquadFilter(); rxNotch.type = 'notch'; rxNotch.Q.value = 20; rxNotch.frequency.value = 1000;
+
+            rxMasterGain = actx.createGain(); rxMasterGain.gain.value = 0.7;
+            
+            agcNode.connect(squelchGate); squelchGate.connect(rxMasterGain); rxMasterGain.connect(actx.destination);
+        }
+
+        function simulateQRN() {
+            if(!actx) return;
+            let prof = bandProfiles[currentBandProfile] || bandProfiles['40m'];
+            updateAtmosphereModel();
+            let ionoPenalty = (atmos.kp * 0.12) + (atmos.night ? 0.12 : 0);
+            let bandMultiplier = Math.max(0.08, ((1.0 - (vfoFreqTarget / 22000000)) + ionoPenalty) * prof.qrn);
+            let antFactor = 1 + (userAntGain / 10);
+            if(Math.random() < 0.3 * bandMultiplier) {
+                let now = actx.currentTime;
+                let intensity = Math.random() * 2.5 * bandMultiplier * antFactor;
+                qrnGain.gain.cancelScheduledValues(now);
+                qrnGain.gain.setValueAtTime(0, now);
+                qrnGain.gain.linearRampToValueAtTime(intensity, now + 0.002); 
+                qrnGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05 + Math.random()*0.2); 
+            }
+        }
+
+        function createQuadratureBuffer(freq) {
+            const len = actx.sampleRate; const buf = actx.createBuffer(2, len, len);
+            const I = buf.getChannelData(0); const Q = buf.getChannelData(1);
+            for(let i=0; i<len; i++) { I[i] = Math.cos(2 * Math.PI * freq * i / len); Q[i] = Math.sin(2 * Math.PI * freq * i / len); }
+            return buf;
+        }
+
+        function buildWeaverRX() {
+            rxVfoSource = actx.createBufferSource(); rxVfoSource.buffer = createQuadratureBuffer(100); 
+            rxVfoSource.loop = true; rxVfoSource.start();
+            const splitVfo = actx.createChannelSplitter(2); rxVfoSource.connect(splitVfo);
+
+            const mix1_I = actx.createGain(); mix1_I.gain.value = 0; const mix1_Q = actx.createGain(); mix1_Q.gain.value = 0;
+            ifBusSum.connect(mix1_I); ifBusSum.connect(mix1_Q);
+            splitVfo.connect(mix1_I.gain, 0); splitVfo.connect(mix1_Q.gain, 1);
+
+            let in_I = mix1_I, in_Q = mix1_Q;
+            for(let i=0; i<3; i++) {
+                let fI = actx.createBiquadFilter(); fI.type = 'lowpass'; let fQ = actx.createBiquadFilter(); fQ.type = 'lowpass';
+                in_I.connect(fI); in_Q.connect(fQ); in_I = fI; in_Q = fQ;
+                rxFilterI.push(fI); rxFilterQ.push(fQ);
+            }
+
+            const rxAfSource = actx.createBufferSource(); rxAfSource.buffer = createQuadratureBuffer(1500);
+            rxAfSource.loop = true; rxAfSource.start();
+            const splitAf = actx.createChannelSplitter(2); rxAfSource.connect(splitAf);
+
+            const mix2_I = actx.createGain(); mix2_I.gain.value = 0; const mix2_Q = actx.createGain(); mix2_Q.gain.value = 0;
+            in_I.connect(mix2_I); in_Q.connect(mix2_Q);
+            splitAf.connect(mix2_I.gain, 0); splitAf.connect(mix2_Q.gain, 1);
+
+            rxIqCombiner = actx.createGain(); rxSidebandInverter = actx.createGain(); rxSidebandInverter.gain.value = 1;
+            mix2_I.connect(rxIqCombiner); mix2_Q.connect(rxSidebandInverter); rxSidebandInverter.connect(rxIqCombiner);
+            
+            rxIqCombiner.connect(rxNotch); rxNotch.connect(agcNode);
+        }
+
+        function buildWeaverTX() {
+            txMasterGain = actx.createGain(); txMasterGain.gain.value = 0; 
+            
+            txAnalyser = actx.createAnalyser(); 
+            txAnalyser.fftSize = 512; txAnalyser.smoothingTimeConstant = 0.3;
+            txMasterGain.connect(txAnalyser);
+            txSpectrumData = new Uint8Array(txAnalyser.frequencyBinCount);
+
+            txMonitorGain = actx.createGain(); txMonitorGain.gain.value = 0;
+            txMasterGain.connect(txMonitorGain);
+            txMonitorGain.connect(actx.destination);
+
+            txMasterGain.connect(ifBusSum);
+            
+            txBaseBandFilter = actx.createBiquadFilter(); txBaseBandFilter.type = 'bandpass';
+            txBaseBandFilter.frequency.value = 1600; txBaseBandFilter.Q.value = 0.6;
+            
+            txDrive = actx.createWaveShaper(); txDrive.curve = makeDistortionCurve(10); 
+            txEq = actx.createBiquadFilter(); txEq.type = 'peaking'; txEq.frequency.value = 1800; txEq.Q.value = 1; txEq.gain.value = 8;
+            txComp = actx.createDynamicsCompressor(); txComp.threshold.value = -35; txComp.ratio.value = 12; txComp.attack.value = 0.003; txComp.release.value = 0.2;
+
+            txEq.connect(txDrive); txDrive.connect(txComp); txComp.connect(txBaseBandFilter);
+            txBaseBandFilter.connect(txMasterGain);
+            
+            txDataGain = actx.createGain(); txDataGain.gain.value = 1;
+            txDataGain.connect(txMasterGain);
+
+            txCwOsc = actx.createOscillator();
+            txCwEnv = actx.createGain(); txCwEnv.gain.value = 0;
+            txCwOsc.connect(txCwEnv);
+            txCwEnv.connect(txDataGain);
+            txCwOsc.start();
+        }
+
+        // ================= GESTION REDES Y MULTIPATH =================
+
+        function calculatePathLoss(freqHz, distanceKm, txPowW, antGainDBi) {
+            let freqMHz = freqHz / 1000000;
+            let fspl = 32.44 + 20 * Math.log10(freqMHz) + 20 * Math.log10(Math.max(1, distanceKm));
+            const mufBonus = Math.max(-8, Math.min(8, (atmos.sfi - 110) * 0.08));
+            const stormLoss = atmos.kp * 1.35;
+            const nightLoss = atmos.night ? (freqMHz > 12 ? 4.5 : -2.0) : 0;
+            fspl += stormLoss + nightLoss - mufBonus;
+            let pwrDBm = 10 * Math.log10(txPowW * 1000);
+            let rxPwrDBm = pwrDBm + antGainDBi - fspl;
+            
+            let snr = rxPwrDBm - (-120);
+            if(snr < 0) return 0.0;
+            return Math.min(1.5, snr / 60); 
+        }
+
+        function instantiateNetworkNode(net, ifFreq) {
+            if(net.activeNodes) return;
+            
+            const mainFader = actx.createGain(); mainFader.gain.value = 0; 
+            
+            const path1 = actx.createGain(); path1.gain.value = 0.5;
+            const path2 = actx.createGain(); path2.gain.value = 0.5;
+            const delay1 = actx.createDelay(); delay1.delayTime.value = 0.0005; 
+            const delay2 = actx.createDelay(); delay2.delayTime.value = 0.0022; 
+
+            mainFader.connect(delay1); delay1.connect(path1); path1.connect(ifBusSum);
+            mainFader.connect(delay2); delay2.connect(path2); path2.connect(ifBusSum);
+
+            const dist = actx.createWaveShaper(); dist.curve = makeDistortionCurve(5);
+            const sourceMix = actx.createGain(); sourceMix.gain.value = 1;
+            sourceMix.connect(dist); dist.connect(mainFader);
+
+            const nodes = { fader: mainFader, path1: path1, path2: path2, dist: dist };
+
+            if(net.mode === 'CW') {
+                nodes.osc = actx.createOscillator(); nodes.osc.frequency.value = ifFreq; 
+                nodes.env = actx.createGain(); nodes.env.gain.value = 0;
+                nodes.filt = actx.createBiquadFilter(); nodes.filt.type = 'lowpass'; nodes.filt.frequency.value = ifFreq + 500;
+                nodes.osc.connect(nodes.env); nodes.env.connect(nodes.filt); nodes.filt.connect(sourceMix); nodes.osc.start();
+            } else if (net.type === 'FT8') {
+                nodes.env = actx.createGain(); nodes.env.gain.value = 0;
+                nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq - net.basebandOffset; 
+                nodes.mod = actx.createGain(); nodes.mod.gain.value = 0;
+                nodes.audio = actx.createBufferSource(); 
+                const initialMsg = net.currentMessage || `CQ ${net.bots[0].call} ${net.bots[0].grid}`;
+                net.lastTones = ft8MessageToTones(initialMsg, net.bots[0].seed);
+                nodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, net.bots[0].seed, initialMsg); 
+                nodes.audio.loop = true; 
+                
+                nodes.f1 = actx.createBiquadFilter(); nodes.f1.type = 'highpass'; nodes.f1.frequency.value = ifFreq - 200;
+                
+                nodes.audio.connect(nodes.mod.gain); nodes.carrier.connect(nodes.mod); nodes.mod.connect(nodes.f1); nodes.f1.connect(nodes.env); nodes.env.connect(sourceMix);
+                nodes.carrier.start(); nodes.audio.start();
+            } else if (net.mode === 'AM') {
+                nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq;
+                nodes.mod = actx.createGain(); nodes.mod.gain.value = 0.5;
+                nodes.audio = actx.createBufferSource(); nodes.audio.buffer = musicBuffer; nodes.audio.loop = true;
+                nodes.audio.connect(nodes.mod.gain); nodes.carrier.connect(nodes.mod); nodes.mod.connect(sourceMix);
+                nodes.carrier.start(); nodes.audio.start();
+            } else if (net.mode === 'RTTY') {
+                nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq;
+                nodes.mod = actx.createGain(); nodes.mod.gain.value = 0;
+                nodes.audio = actx.createBufferSource(); nodes.audio.buffer = rttyBuffer; nodes.audio.loop = true;
+                nodes.audio.connect(nodes.carrier.frequency); 
+                nodes.carrier.connect(sourceMix); nodes.carrier.start(); nodes.audio.start();
+            } else { // SSB
+                nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq;
+                nodes.mod = actx.createGain(); nodes.mod.gain.value = 0;
+                nodes.audioSources = [];
+                for(let i=0; i<4; i++){
+                    let src = actx.createBufferSource(); src.buffer = voiceBuffers[i]; src.loop = true;
+                    let bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1500; bp.Q.value=0.5;
+                    src.connect(bp); bp.connect(nodes.mod.gain);
+                    src.start(0, Math.random()*10); nodes.audioSources.push(src);
+                }
+                nodes.carrier.connect(nodes.mod);
+                nodes.f1 = actx.createBiquadFilter(); nodes.f2 = actx.createBiquadFilter();
+                nodes.f1.Q.value = 2; nodes.f2.Q.value = 2;
+                if (net.mode === 'USB') { nodes.f1.type = 'highpass'; nodes.f2.type = 'highpass'; } 
+                else { nodes.f1.type = 'lowpass'; nodes.f2.type = 'lowpass'; }
+                let offset = (net.mode === 'USB') ? 200 : -200;
+                nodes.f1.frequency.value = ifFreq + offset; nodes.f2.frequency.value = ifFreq + offset;
+                nodes.mod.connect(nodes.f1); nodes.f1.connect(nodes.f2); nodes.f2.connect(sourceMix);
+                nodes.carrier.start();
+            }
+            net.activeNodes = nodes;
+        }
+
+        function updateNetworkFrequencies(net, ifFreq) {
+            if(!net.activeNodes) return;
+            const n = net.activeNodes;
+            if(n.osc) n.osc.frequency.setTargetAtTime(ifFreq, actx.currentTime, 0.08);
+            if(n.filt) n.filt.frequency.setTargetAtTime(ifFreq + 500, actx.currentTime, 0.08);
+            if(net.type !== 'FT8' && n.carrier) n.carrier.frequency.setTargetAtTime(ifFreq, actx.currentTime, 0.08);
+            if(net.type === 'FT8' && n.carrier) {
+                n.carrier.frequency.setTargetAtTime(ifFreq - net.basebandOffset, actx.currentTime, 0.08);
+                if(n.f1) n.f1.frequency.setTargetAtTime(ifFreq - 200, actx.currentTime, 0.08);
+            }
+            if(net.type === 'SSB_QSO' && n.f1) {
+                let offset = (net.mode === 'USB') ? 200 : -200;
+                n.f1.frequency.setTargetAtTime(ifFreq + offset, actx.currentTime, 0.08);
+                n.f2.frequency.setTargetAtTime(ifFreq + offset, actx.currentTime, 0.08);
+            }
+        }
+
+        function destroyNetworkNode(net) {
+            if(!net.activeNodes) return;
+            const n = net.activeNodes;
+            if(n.osc) n.osc.stop(); if(n.carrier) n.carrier.stop(); 
+            if(n.audio) n.audio.stop(); if(n.audioSources) n.audioSources.forEach(s=>s.stop());
+            n.fader.disconnect(); n.path1.disconnect(); n.path2.disconnect(); n.dist.disconnect(); 
+            net.activeNodes = null;
+        }
+
+        // ================= LOOP MOTOR Y FÍSICAS =================
+        let physicsTime = 0;
+        
+        function botEngineLoop() {
+            if(!actx) return;
+            physicsTime += 0.05; let now = actx.currentTime;
+            
+            userTxPower = parseFloat(document.getElementById('tx-power').value);
+            userAntGain = parseFloat(document.getElementById('ant-type').value);
+            targetDistanceKm = parseInt(document.getElementById('tx-dist').value);
+
+            if(Math.abs(vfoFreqTarget - vfoFreqActual) > 0.1) {
+                vfoFreqActual += (vfoFreqTarget - vfoFreqActual) * 0.3;
+                applyVFOHardware();
+            }
+
+            let antFactor = 1 + (userAntGain / 15);
+            let bandNoiseLevel = (0.8 - (vfoFreqActual / MAX_FREQ) * 0.6) * antFactor;
+            if(noiseGainNode) noiseGainNode.gain.setTargetAtTime(bandNoiseLevel, now, 0.5);
+
+            // FT8 SEQUENCER REAL
+            let utc = new Date();
+            let utcSecs = utc.getUTCSeconds();
+            let utcMs = utc.getUTCMilliseconds();
+            ft8CycleTime = (utcSecs % 15) + (utcMs / 1000);
+            const slot = Math.floor((utc.getTime() / 1000) / 15);
+            
+            document.getElementById('ft8-cycle-timer').innerText = `Seq: ${ft8CycleTime.toFixed(1)}s`;
+
+            if(slot !== ft8CurrentSlot) {
+                ft8CurrentSlot = slot;
+                ft8DecodedThisCycle = false;
+            }
+
+            // Procesar decodificación cerca del fin de secuencia FT8 (slot de 15s)
+            if(ft8CycleTime >= 14.2 && !ft8DecodedThisCycle) {
+                ft8DecodedThisCycle = true;
+                processFT8Decodes(utc);
+            }
+
+            qsoNetworks.forEach(net => {
+                let baseGain = calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain); 
+                let fade1 = Math.sin(physicsTime * net.fadingRates[0] + net.fadingPhases[0]);
+                let fade2 = Math.cos(physicsTime * net.fadingRates[1] + net.fadingPhases[1]);
+                let attenuation = Math.pow(((fade1 + fade2)/2 + 1.2) / 2.2, 3); 
+                let currentPwr = net.bots[net.activeBotIdx].pwr * attenuation * baseGain;
+                
+                if(net.activeNodes) {
+                    net.activeNodes.fader.gain.setTargetAtTime(currentPwr, now, 0.1);
+                    net.activeNodes.path1.gain.setTargetAtTime(0.5 + (fade1 * 0.3), now, 0.1);
+                    net.activeNodes.path2.gain.setTargetAtTime(0.5 + (fade2 * 0.3), now, 0.1);
+                }
+
+                if (net.type === 'FT8') {
+                    // Start of sequence
+                    if(ft8CycleTime < 0.18 && net.state === 'IDLE' && Math.random() > 0.35) {
+                        net.state = 'TX'; net.timer = 12.64; 
+                        
+                        // Bot State Machine Logic
+                        let bot = net.bots[0];
+                        if(bot.ft8State === 'CQ') {
+                            net.currentMessage = `CQ ${bot.call} ${bot.grid}`;
+                            if(Math.random() > 0.8) bot.ft8State = 'REPLY_WAIT'; // Simular qso con otro bot
+                        } else if (bot.ft8State === 'REPLY_WAIT') {
+                            bot.ft8Target = genCall();
+                            bot.ft8State = 'REPORT';
+                            net.currentMessage = `${bot.ft8Target} ${bot.call} ${bot.grid}`;
+                        } else if (bot.ft8State === 'REPORT') {
+                            net.currentMessage = `${bot.ft8Target} ${bot.call} ${genFT8Report()}`;
+                            bot.ft8State = 'RR73';
+                        } else if (bot.ft8State === 'RR73') {
+                            net.currentMessage = `${bot.ft8Target} ${bot.call} RR73`;
+                            bot.ft8State = '73';
+                        } else if (bot.ft8State === '73') {
+                            net.currentMessage = `${bot.ft8Target} ${bot.call} 73`;
+                            bot.ft8State = 'CQ';
+                        }
+
+                        net.currentMessage = normalizeFT8Message(net.currentMessage) || `CQ ${bot.call} ${bot.grid}`;
+                        bot.lastMsg = net.currentMessage;
+                        if(net.activeNodes && net.activeNodes.audio) {
+                            try { net.activeNodes.audio.stop(); } catch(e) {}
+                            net.activeNodes.audio = actx.createBufferSource();
+                            net.lastTones = ft8MessageToTones(net.currentMessage, bot.seed + Math.random());
+                            net.activeNodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, bot.seed + Math.random(), net.currentMessage);
+                            net.activeNodes.audio.loop = false;
+                            net.activeNodes.audio.connect(net.activeNodes.mod.gain);
+                            net.activeNodes.audio.start(now);
+                        }
+                        if(net.activeNodes && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(1.0, now, 0.1);
+                    }
+                    if(net.state === 'TX') {
+                        net.timer -= 0.05;
+                        if(net.timer <= 0 || ft8CycleTime >= 12.64) {
+                            net.state = 'IDLE';
+                            if(net.activeNodes && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(0.0, now, 0.1);
+                        }
+                    }
+                } else {
+                    net.timer -= 0.05;
+                    if(net.timer <= 0) {
+                        if(net.state === 'IDLE' || net.state === 'PAUSE') {
+                            net.state = 'TX'; net.timer = 5 + Math.random() * 15; 
+                            net.activeBotIdx = (net.activeBotIdx + 1) % net.bots.length; 
+                            if(net.type === 'CW_QSO') {
+                                let b1 = net.bots[net.activeBotIdx].call; let b2 = net.bots[(net.activeBotIdx+1)%net.bots.length].call;
+                                net.cwMsg = `${b2} DE ${b1} UR 599 K`; net.cwIdx = 0; net.cwTime = now;
+                            }
+                        } else if (net.state === 'TX') {
+                            net.state = 'PAUSE'; net.timer = 1 + Math.random() * 3; 
+                        }
+                    }
+                }
+
+                if(net.activeNodes && net.type !== 'FT8') {
+                    if(net.state === 'PAUSE' || net.state === 'IDLE') {
+                        if(net.mode === 'CW' && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(0, now, 0.02);
+                        if(net.type === 'SSB_QSO' && net.activeNodes.carrier) net.activeNodes.fader.gain.setTargetAtTime(0, now, 0.05);
+                    } else if (net.state === 'TX') {
+                        if(net.type === 'SSB_QSO') net.activeNodes.fader.gain.setTargetAtTime(currentPwr, now, 0.05);
+                        else if (net.type === 'CW_QSO' && net.cwMsg) {
+                            if(now >= net.cwTime && net.cwIdx < net.cwMsg.length) {
+                                let char = net.cwMsg[net.cwIdx].toUpperCase(); let dot = 1.2 / net.wpm;
+                                if(char === ' ') net.cwTime += dot * 7;
+                                else {
+                                    let code = morseDict[char];
+                                    if(code) {
+                                        let t = net.cwTime;
+                                        for(let j=0; j<code.length; j++) {
+                                            net.activeNodes.env.gain.setValueAtTime(0, t);
+                                            net.activeNodes.env.gain.setTargetAtTime(1, t, 0.005);
+                                            t += (code[j] === '.' ? dot : dot*3);
+                                            net.activeNodes.env.gain.setValueAtTime(1, t);
+                                            net.activeNodes.env.gain.setTargetAtTime(0, t, 0.005);
+                                            t += dot; 
+                                        }
+                                        net.cwTime = t + dot*2; 
+                                    }
+                                }
+                                net.cwIdx++;
+                            } else if (net.cwIdx >= net.cwMsg.length) {
+                                net.state = 'PAUSE'; net.timer = 2; 
+                            }
+                        }
+                    }
+                }
+            });
+
+            // S-METER
+            let rawPct = 0;
+            if(isTransmitting && txAnalyser) {
+                txAnalyser.getByteFrequencyData(txSpectrumData);
+                let sum = 0; for(let i=0; i<txSpectrumData.length; i++) sum += txSpectrumData[i];
+                let avg = sum / txSpectrumData.length;
+                rawPct = Math.min(100, (avg / 80) * 100); 
+                if(currentMode === 'AM' || currentMode === 'CW') rawPct = Math.max(70, rawPct);
+            } else if(agcNode && !isTransmitting) {
+                let red = agcNode.reduction; if(typeof red === 'object') red = red.value;
+                rawPct = Math.min(100, Math.abs(red) / 45 * 100);
+            }
+
+            currentSMeterRaw = rawPct > currentSMeterRaw ? currentSMeterRaw + (rawPct - currentSMeterRaw)*0.6 : currentSMeterRaw - (currentSMeterRaw - rawPct)*0.08;
+            document.getElementById('ui-meter').style.width = `${currentSMeterRaw}%`;
+
+            let sqlThresh = parseInt(document.getElementById('sql-level').value);
+            if(!isTransmitting) {
+                if (currentSMeterRaw < sqlThresh && !isSquelchMuted) {
+                    squelchGate.gain.setTargetAtTime(0, now, 0.05); isSquelchMuted = true;
+                } else if (currentSMeterRaw >= sqlThresh && isSquelchMuted) {
+                    squelchGate.gain.setTargetAtTime(1, now, 0.01); isSquelchMuted = false;
+                }
+            }
+
+            if(currentSMeterRaw > peakSMeter) { peakSMeter = currentSMeterRaw; peakHoldTime = 25; } 
+            else {
+                peakHoldTime--;
+                if(peakHoldTime <= 0) peakSMeter -= 1.5;
+            }
+            document.getElementById('ui-meter-peak').style.left = `${Math.max(0, peakSMeter)}%`;
+            
+            updateStationLogUI();
+            processCwDecoder();
+        }
+
+        // ================= FT8 ENGINE REALISTA =================
+
+        function processFT8Decodes(utc) {
+            const decodeTs = new Date(utc.getTime() - 13000);
+            const timeStr = `${String(decodeTs.getUTCHours()).padStart(2,'0')}${String(decodeTs.getUTCMinutes()).padStart(2,'0')}${String(decodeTs.getUTCSeconds()).padStart(2,'0')}`;
+            let decodes = [];
+
+            qsoNetworks.forEach(net => {
+                if(net.type !== 'FT8' || net.state !== 'TX' || !net.currentMessage) return;
+                
+                let df = net.freq - vfoFreqActual;
+                if(df > -3000 && df < 3000) { 
+                    // Calcular SNR basado en la atenuación
+                    let baseGain = calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain); 
+                    let snr = Math.floor((baseGain * 60) - 120 + 75); // Normalización para mostrar ~ -24 a +10
+                    
+                    if(snr >= -24) { 
+                        let decodedMsg = (net.lastTones && net.lastTones.length === 79) ? (decodeFT8FromTones(net.lastTones) || net.currentMessage) : net.currentMessage;
+                        decodes.push({
+                            time: timeStr, snr: snr, dt: (Math.random()*0.8 - 0.4).toFixed(1),
+                            freq: Math.floor(net.basebandOffset), msg: decodedMsg, 
+                            call: net.bots[0].call, grid: net.bots[0].grid
+                        });
+                    }
+                }
+            });
+
+            decodes.sort((a,b) => a.freq - b.freq);
+            if(decodes.length === 0) {
+                ft8EmptyDecodeCycles++;
+                if(ft8EmptyDecodeCycles >= 3) {
+                    tuneTo(7074000, 'USB');
+                    filterBw = 3000;
+                    document.getElementById('filt-bw').value = filterBw;
+                    document.getElementById('sql-level').value = 0;
+                    updateBwDisplay();
+                    applyVFOHardware();
+                    printToConsole('[FT8] Auto-recuperación decoder: retune 7.074 USB + BW 3.0k.', 'sys');
+                    ft8EmptyDecodeCycles = 0;
+                } else {
+                    printToConsole('[FT8] Sin decodificaciones en este slot.', 'sys');
+                }
+            } else {
+                ft8EmptyDecodeCycles = 0;
+            }
+            
+            if(decodes.length === 0 && ft8StrictMode) { printToConsole('[FT8] Decoder: sin tramas válidas en este ciclo.', 'sys'); }
+            decodes.forEach(d => {
+                let isToMe = d.msg.includes(myCallsign);
+                let colorClass = isToMe ? 'ft8-tx-line' : 'ft8-rx-line';
+                let row = `<div class="ft8-msg-row ${colorClass}" onclick="handleFT8MessageClick('${d.call}', '${d.grid}', ${d.snr}, ${d.freq})">
+                    <span>${d.time}</span><span>${d.snr}</span><span>${d.dt}</span><span>${d.freq}</span><span>${d.msg}</span>
+                </div>`;
+                printToConsole(row, 'rx');
+            });
+        }
+
+        function handleFT8MessageClick(call, grid, snr, audioFreq) {
+            userFt8State = 'TX_REPLY';
+            userFt8TargetCall = call;
+            userFt8TargetGrid = grid;
+            userFt8Report = snr;
+            userFt8AutoSeq = 1; 
+            ft8BasebandOffsetTx = audioFreq; // Transmitir en la misma freq de audio
+            updateFT8NextMessage();
+        }
+
+        function setupUserFT8CQ() {
+            userFt8State = 'TX_CQ';
+            userFt8TargetCall = '';
+            userFt8AutoSeq = 0;
+            updateFT8NextMessage();
+        }
+
+        function updateFT8NextMessage() {
+            let btn = document.getElementById('btn-tx-ft8');
+            let status = document.getElementById('ft8-next-msg');
+            
+            if(userFt8State === 'IDLE') {
+                userFt8TxMessage = '';
+                status.innerText = 'Auto-TX: OFF';
+                btn.innerText = 'Enable FT8 TX';
+                btn.style.background = 'linear-gradient(180deg, #334155, #1e293b)';
+            } else {
+                if(userFt8State === 'TX_CUSTOM') {
+                    userFt8TxMessage = userFt8CustomMessage || '';
+                } else if(userFt8State === 'TX_CQ') {
+                    userFt8TxMessage = `CQ ${myCallsign} ${myGrid}`;
+                } else if (userFt8State === 'TX_REPLY') {
+                    if(userFt8AutoSeq === 1) userFt8TxMessage = `${userFt8TargetCall} ${myCallsign} ${myGrid}`;
+                    else if (userFt8AutoSeq === 2) userFt8TxMessage = `${userFt8TargetCall} ${myCallsign} R${userFt8Report}`;
+                    else if (userFt8AutoSeq === 3) userFt8TxMessage = `${userFt8TargetCall} ${myCallsign} RR73`;
+                    else if (userFt8AutoSeq === 4) userFt8TxMessage = `${userFt8TargetCall} ${myCallsign} 73`;
+                }
+                status.innerText = `NEXT: ${userFt8TxMessage}`;
+                btn.innerText = 'HALT TX';
+                btn.style.background = 'linear-gradient(180deg, #db2777, #9d174d)';
+            }
+        }
+
+        const setGlobalTX = (state) => {
+            isTransmitting = state;
+            if(state) {
+                document.getElementById('ind-rx').classList.remove('active'); document.getElementById('ind-tx').classList.add('active');
+                rxMasterGain.gain.setTargetAtTime(0.01, actx.currentTime, 0.01); 
+                
+                let pwrW = parseFloat(document.getElementById('tx-power').value);
+                let txGainVol = Math.max(0.1, Math.min(3.0, Math.sqrt(pwrW / 100)));
+                if(txMasterGain) txMasterGain.gain.setTargetAtTime(txGainVol, actx.currentTime, 0.05); 
+                
+                let monVol = document.getElementById('mon-level').value / 100;
+                if(txMonitorGain) txMonitorGain.gain.setTargetAtTime(monVol, actx.currentTime, 0.05);
+            } else {
+                document.getElementById('ind-tx').classList.remove('active'); document.getElementById('ind-rx').classList.add('active');
+                if(txMasterGain) txMasterGain.gain.setTargetAtTime(0, actx.currentTime, 0.01); 
+                if(txMonitorGain) txMonitorGain.gain.setTargetAtTime(0, actx.currentTime, 0.01); 
+                rxMasterGain.gain.setTargetAtTime(document.getElementById('af-gain').value / 100, actx.currentTime, 0.1);
+            }
+        };
+
+        // Bucle para transmisión automática FT8 en límite de ciclo 15s
+        setInterval(() => {
+            if(userFt8State !== 'IDLE' && ft8CycleTime < 0.18 && !isTransmitting) {
+                executeUserFT8Tx();
+            }
+        }, 200);
+
+        function executeUserFT8Tx() {
+            if(!userFt8TxMessage) return;
+            
+            let ft8Buf = generateFT8Buffer(actx, ft8BasebandOffsetTx, false, 0, userFt8TxMessage);
+            let ft8Src = actx.createBufferSource();
+            ft8Src.buffer = ft8Buf;
+            ft8Src.connect(txDataGain);
+            
+            let utc = new Date();
+            const timeStr = `${String(utc.getUTCHours()).padStart(2,'0')}${String(utc.getUTCMinutes()).padStart(2,'0')}${String(utc.getUTCSeconds()).padStart(2,'0')}`;
+            let row = `<div class="ft8-msg-row ft8-tx-line">
+                <span>${timeStr}</span><span>Tx</span><span>0.0</span><span>${Math.floor(ft8BasebandOffsetTx)}</span><span>${userFt8TxMessage}</span>
+            </div>`;
+            printToConsole(row, 'tx');
+            
+            setGlobalTX(true);
+            ft8Src.start();
+            
+            setTimeout(() => {
+                setGlobalTX(false);
+                // Avanzar secuencia WSJT-X
+                if(userFt8State === 'TX_REPLY') {
+                    if(userFt8AutoSeq === 4) { userFt8State = 'IDLE'; printToConsole('[SYS] QSO Completo. Auto-TX OFF.', 'sys'); }
+                    else { userFt8AutoSeq++; }
+                }
+                updateFT8NextMessage();
+            }, 12640);
+        }
+
+        // ================= CW DECODER & INTERACCIÓN =================
+        function processCwDecoder() {
+            if(!cwDecodeBuffer.length) return;
+            let now = Date.now();
+            if(!cwIsDown && now - cwLastStateChange > 600) { 
+                let word = cwDecodeBuffer.join('');
+                if(word.length > 0) {
+                    printToConsole(`[TX CW] Decoded: ${word}`, 'sys');
+                    
+                    let activeNets = qsoNetworks.filter(n => n.type === 'CW_QSO' && Math.abs(n.freq - vfoFreqActual) < 1000);
+                    if(activeNets.length > 0) {
+                        let targetNet = activeNets[0];
+                        let botCall = targetNet.bots[targetNet.activeBotIdx].call;
+                        
+                        if(word.includes("CQ") || word.includes(botCall)) {
+                            targetNet.state = 'TX';
+                            targetNet.cwMsg = `${myCallsign} DE ${botCall} UR 599 TU`;
+                            targetNet.cwIdx = 0;
+                            targetNet.cwTime = actx.currentTime + 1.0;
+                            printToConsole(`[SYS] Respuesta CW detectada de ${botCall}...`, 'sys');
+                        }
+                    }
+                    cwDecodeBuffer = []; 
+                }
+            }
+        }
+
+        // ================= VFO Y HARDWARE UI =================
+
+        function setStep(hz) {
+            vfoStep = hz;
+            document.querySelectorAll('.step-btns button').forEach(b => b.classList.remove('active'));
+            document.getElementById(hz === 100 ? 'btn-step-100' : event.target.id).classList.add('active');
+            if(event.target.tagName === 'BUTTON') event.target.classList.add('active');
+            document.getElementById('ui-step-disp').innerText = `STP: ${hz>=1000 ? hz/1000+'kHz' : hz+'Hz'}`;
+        }
+
+        function tuneTo(freq, mode) {
+            vfoFreqTarget = freq; 
+            currentMode = mode; 
+            ritOffset = 0;
+            document.getElementById('rit-offset').value = 0; 
+            document.getElementById('ui-rit').style.display = 'none';
+            
+            document.querySelectorAll('.btn-grid-4 .btn-sm').forEach(b => {
+                if(b.innerText === mode) {
+                    document.querySelectorAll('.btn-grid-4 .btn-sm').forEach(bb=>bb.classList.remove('active'));
+                    b.classList.add('active');
+                }
+            });
+
+            setModeDefaultBw();
+            updateVFO();
+        }
+
+        function setModeDefaultBw() {
+            if(currentMode === 'AM') filterBw = 6000;
+            else if(currentMode === 'CW') filterBw = 600;
+            else filterBw = 2700; 
+            
+            document.getElementById('filt-bw').value = filterBw;
+            updateBwDisplay();
+            applyVFOHardware(); 
+        }
+
+        function updateBwDisplay() {
+            let disp = filterBw >= 1000 ? (filterBw/1000).toFixed(1) + 'k' : filterBw + 'Hz';
+            document.getElementById('ui-bw').innerText = `BW: ${disp}`;
+        }
+
+        function updateVFO() {
+            let dispFreq = Math.round(vfoFreqTarget);
+            let mhz = Math.floor(dispFreq / 1000000); 
+            let rem = String(dispFreq % 1000000).padStart(6, '0');
+            document.getElementById('ui-freq-mhz').innerText = `${String(mhz).padStart(2,'0')}.${rem.substring(0,3)}`;
+            document.getElementById('ui-freq-hz').innerText = `.${rem.substring(3,5)}`;
+            document.getElementById('ui-mode').innerText = currentMode;
+            
+            updateNotchVisual();
+        }
+
+        function applyVFOHardware() {
+            let rxFreqWithRit = vfoFreqActual + ritOffset;
+
+            let rxTargetFreq = IF_CENTER;
+            if(currentMode === 'USB') { rxTargetFreq = IF_CENTER + 1500; rxSidebandInverter.gain.value = -1; }
+            else if (currentMode === 'LSB') { rxTargetFreq = IF_CENTER - 1500; rxSidebandInverter.gain.value = 1; }
+            else if (currentMode === 'CW') { rxTargetFreq = IF_CENTER + 1500 - 700; rxSidebandInverter.gain.value = -1; }
+            else if (currentMode === 'AM') { rxTargetFreq = IF_CENTER; rxSidebandInverter.gain.value = 0; }
+
+            if(rxVfoSource) rxVfoSource.playbackRate.setTargetAtTime(rxTargetFreq / 100, actx.currentTime, 0.05);
+            
+            if(txCwOsc) txCwOsc.frequency.setTargetAtTime(currentMode === 'CW' ? rxTargetFreq + 700 : rxTargetFreq + 1000, actx.currentTime, 0.1);
+            
+            let cutOff = filterBw / 2;
+            if(rxFilterI.length) {
+                rxFilterI.forEach(f => f.frequency.setTargetAtTime(cutOff, actx.currentTime, 0.1));
+                rxFilterQ.forEach(f => f.frequency.setTargetAtTime(cutOff, actx.currentTime, 0.1));
+            }
+
+            qsoNetworks.forEach(net => {
+                let diff = net.freq - rxFreqWithRit; let ifFreq = IF_CENTER + diff;
+                if(Math.abs(diff) <= IF_BANDWIDTH * 1.5) {
+                    if(!net.activeNodes) instantiateNetworkNode(net, ifFreq);
+                    else updateNetworkFrequencies(net, ifFreq);
+                } else { destroyNetworkNode(net); }
+            });
+        }
+
+        function updateNotchVisual() {
+            let nToggle = document.getElementById('notch-toggle').checked;
+            let nFreq = document.getElementById('notch-freq').value;
+            let nInd = document.getElementById('notch-indicator');
+            
+            if(nToggle) {
+                rxNotch.type = 'notch'; rxNotch.frequency.setTargetAtTime(nFreq, actx.currentTime, 0.05);
+                nInd.style.display = 'block';
+                let wL = cvLocal.width; let hzPerPx = (IF_BANDWIDTH * 2) / wL; let centerPx = wL / 2;
+                let offsetPx = 0;
+                if(currentMode === 'USB') offsetPx = nFreq / hzPerPx; else if (currentMode === 'LSB') offsetPx = -nFreq / hzPerPx;
+                nInd.style.left = `${centerPx + offsetPx - 2}px`;
+            } else {
+                rxNotch.type = 'allpass'; nInd.style.display = 'none';
+            }
+        }
+
+        function updateStationLogUI() {
+            let html = ''; let count = 0;
+            let sortedNets = [...qsoNetworks].filter(n => Math.abs(n.freq - vfoFreqActual) <= IF_BANDWIDTH)
+                                              .sort((a,b) => Math.abs(a.freq - vfoFreqActual) - Math.abs(b.freq - vfoFreqActual));
+
+            sortedNets.forEach(net => {
+                if(count >= 4) return;
+                let isTx = net.state === 'TX'; let desc = isTx ? `TX: ${net.bots[net.activeBotIdx].call}` : 'QRT / Escuchando';
+                if(net.type === 'RTTY') desc = 'FSK Data 45bd'; 
+                else if(net.type === 'AM_BROADCAST') desc = 'Broadcasting';
+                else if(net.type === 'FT8') desc = isTx ? `FT8 Seq Activo` : `FT8 Slot IDLE`;
+                
+                let modeDisp = net.type === 'FT8' ? 'ft8' : net.mode.toLowerCase();
+                
+                html += `<div class="log-entry" onclick="tuneTo(${net.freq}, '${net.mode}')">
+                            <div class="log-header">
+                                <span class="log-freq">${(net.freq/1000).toFixed(1)}</span>
+                                <span class="log-mode ${modeDisp}">${net.type==='FT8'?'FT8':net.mode}</span>
+                            </div>
+                            <div class="log-desc ${isTx ? 'log-active':''}">${desc}</div>
+                         </div>`;
+                count++;
+            });
+            document.getElementById('station-log').innerHTML = html || '<div style="text-align:center; padding:20px; color:#475569;">QRM Atmosférico...</div>';
+        }
+
+        // ================= RENDERIZADO VISUAL =================
+
+        function buildColormap() {
+            for (let i = 0; i < 256; i++) {
+                let r, g, b;
+                if (i < 40) { r = 0; g = 0; b = Math.floor((i / 40) * 120); } 
+                else if (i < 90) { let p = (i - 40) / 50; r = 0; g = Math.floor(p * 200); b = 120 + Math.floor(p * 135); } 
+                else if (i < 160) { let p = (i - 90) / 70; r = Math.floor(p * 200); g = 200 + Math.floor(p * 55); b = 255 - Math.floor(p * 255); } 
+                else if (i < 220) { let p = (i - 160) / 60; r = 200 + Math.floor(p * 55); g = 255 - Math.floor(p * 155); b = 0; } 
+                else { let p = (i - 220) / 36; r = 255; g = 100 + Math.floor(p * 155); b = Math.floor(p * 255); }
+                colormap.push([r, g, b]);
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        function resizeCanvas() {
+            cvGlobal.width = cvGlobal.parentElement.clientWidth; cvGlobal.height = cvGlobal.parentElement.clientHeight;
+            let wrapperWidth = cvLocal.parentElement.clientWidth;
+            cvLocal.width = wrapperWidth; cvLocal.height = cvLocal.parentElement.clientHeight * 0.35; 
+            cvWaterfall.width = wrapperWidth; cvWaterfall.height = cvLocal.parentElement.clientHeight * 0.65; 
+            tempCanvas.width = wrapperWidth; tempCanvas.height = 1;
+            ctxWaterfall.fillStyle = '#000'; ctxWaterfall.fillRect(0,0, cvWaterfall.width, cvWaterfall.height);
+        }
+
+        function drawGrid(ctx, w, h, spanHz) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1; ctx.beginPath();
+            for(let i=1; i<4; i++) { let y = h * (i/4); ctx.moveTo(0, y); ctx.lineTo(w, y); }
+            
+            let hzPerPx = spanHz / w; let pxPerKHz = 1000 / hzPerPx; let center = w / 2;
+            ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(16, 185, 129, 0.4)'; ctx.font = '10px "Share Tech Mono"';
+            
+            for(let i=-12; i<=12; i+=2) {
+                if(i===0) continue;
+                let x = center + (i * pxPerKHz); ctx.moveTo(x, 0); ctx.lineTo(x, h);
+                if(i % 4 === 0) ctx.fillText((i>0?'+':'')+i, x, h - 5);
+            }
+            ctx.stroke();
+            
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)'; ctx.beginPath(); ctx.moveTo(center, 0); ctx.lineTo(center, h); ctx.stroke();
+        }
+
+        function renderGraphics() {
+            requestAnimationFrame(renderGraphics);
+            if(!cvGlobal.width) resizeCanvas();
+
+            let wG = cvGlobal.width, hG = cvGlobal.height;
+            ctxGlobal.fillStyle = '#020202'; ctxGlobal.fillRect(0,0,wG,hG);
+            
+            ctxGlobal.strokeStyle = 'rgba(255,255,255,0.08)'; ctxGlobal.beginPath();
+            for(let i=5; i<30; i+=5) {
+                let x = (i*1000000 / MAX_FREQ) * wG; ctxGlobal.moveTo(x, 0); ctxGlobal.lineTo(x, hG);
+                ctxGlobal.fillStyle = '#475569'; ctxGlobal.fillText(i+'M', x+2, hG - 5);
+            }
+            ctxGlobal.stroke();
+
+            qsoNetworks.forEach(net => {
+                if(net.state !== 'TX') return;
+                ctxGlobal.fillStyle = net.type === 'FT8' ? 'rgba(219, 39, 119, 0.8)' : (net.type === 'RTTY' ? 'rgba(245, 158, 11, 0.8)' : 'rgba(16, 185, 129, 0.6)');
+                let x = (net.freq / MAX_FREQ) * wG; let pwr = net.bots[net.activeBotIdx] ? net.bots[net.activeBotIdx].pwr : 1.0;
+                let h = pwr * hG * 0.8; ctxGlobal.fillRect(x - 1, hG - h, 2, h);
+            });
+
+            document.getElementById('global-cursor').style.left = `${(vfoFreqActual / MAX_FREQ) * wG}px`;
+
+            if(localAnalyser) {
+                if(!localSpectrumData) localSpectrumData = new Uint8Array(localAnalyser.frequencyBinCount);
+                localAnalyser.getByteFrequencyData(localSpectrumData);
+
+                let wL = cvLocal.width, hL = cvLocal.height; let wW = cvWaterfall.width, hW = cvWaterfall.height;
+                ctxLocal.fillStyle = '#050505'; ctxLocal.fillRect(0,0,wL,hL);
+                
+                drawGrid(ctxLocal, wL, hL, IF_BANDWIDTH*2);
+
+                let hzPerBin = 24000 / localAnalyser.frequencyBinCount;
+                let startBin = Math.floor((IF_CENTER - IF_BANDWIDTH) / hzPerBin); 
+                let endBin = Math.floor((IF_CENTER + IF_BANDWIDTH) / hzPerBin);
+                let numBins = endBin - startBin; let sliceWidth = wL / numBins;
+
+                ctxLocal.beginPath(); 
+                let grd = ctxLocal.createLinearGradient(0, hL, 0, 0);
+                if(isTransmitting) { grd.addColorStop(0, 'rgba(239, 68, 68, 0.2)'); grd.addColorStop(1, '#ef4444'); } 
+                else { grd.addColorStop(0, 'rgba(16, 185, 129, 0.2)'); grd.addColorStop(1, '#10b981'); }
+                
+                ctxLocal.fillStyle = isTransmitting ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+                ctxLocal.strokeStyle = grd; ctxLocal.lineWidth = 1.5;
+                
+                ctxLocal.moveTo(0, hL);
+                for(let i=0, x=0; i < numBins; i++, x += sliceWidth) {
+                    let v = localSpectrumData[startBin + i] / 255.0; 
+                    v = Math.pow(v, 1.8); 
+                    ctxLocal.lineTo(x, hL - (v * hL * 0.95));
+                }
+                ctxLocal.lineTo(wL, hL); ctxLocal.fill(); ctxLocal.stroke();
+
+                ctxWaterfall.drawImage(cvWaterfall, 0, 0, wW, hW - 1, 0, 1, wW, hW - 1);
+                let imgData = tempCtx.createImageData(wW, 1); let data = imgData.data;
+                
+                for(let x = 0; x < wW; x++) {
+                    let binIdx = startBin + Math.floor((x / wW) * numBins); 
+                    let val = localSpectrumData[binIdx] || 0;
+                    val = Math.min(255, (val * 1.28));
+                    let color = colormap[Math.floor(val)]; 
+                    let px = x * 4; data[px] = color[0]; data[px+1] = color[1]; data[px+2] = color[2]; data[px+3] = 255; 
+                }
+                tempCtx.putImageData(imgData, 0, 0); ctxWaterfall.drawImage(tempCanvas, 0, 0);
+
+                let pxPerHz = wL / (IF_BANDWIDTH * 2); let centerPx = wL / 2;
+                document.getElementById('vfo-center').style.left = `${centerPx}px`;
+
+                let passbandEl = document.getElementById('vfo-passband'); let bwPx = filterBw * pxPerHz;
+                passbandEl.style.width = `${bwPx}px`;
+                
+                let ritPx = ritOffset * pxPerHz;
+
+                if(currentMode === 'USB') passbandEl.style.left = `${centerPx + ritPx}px`;
+                else if(currentMode === 'LSB') passbandEl.style.left = `${centerPx - bwPx + ritPx}px`;
+                else if(currentMode === 'CW') passbandEl.style.left = `${centerPx + (700*pxPerHz) - (bwPx/2) + ritPx}px`;
+                else passbandEl.style.left = `${centerPx - (bwPx/2) + ritPx}px`;
+            }
+        }
+
+        function setupUIEvents() {
+            const modes = ['btn-usb', 'btn-lsb', 'btn-cw', 'btn-am'];
+            modes.forEach(id => {
+                document.getElementById(id).addEventListener('click', e => {
+                    modes.forEach(m => document.getElementById(m).classList.remove('active'));
+                    e.target.classList.add('active'); 
+                    currentMode = e.target.innerText; 
+                    
+                    setModeDefaultBw(); 
+                    updateVFO();
+                });
+            });
+
+            let lastVfoVal = 0;
+            document.getElementById('vfo-knob').addEventListener('input', e => {
+                let diff = parseInt(e.target.value) - lastVfoVal;
+                vfoFreqTarget += (diff * vfoStep); 
+                vfoFreqTarget = Math.max(0, Math.min(MAX_FREQ, vfoFreqTarget)); 
+                lastVfoVal = parseInt(e.target.value);
+                updateVFO();
+            });
+            document.getElementById('vfo-knob').addEventListener('change', e => {
+                e.target.value = 0; lastVfoVal = 0;
+            });
+
+            document.querySelector('.canvas-wrapper').addEventListener('wheel', e => {
+                e.preventDefault(); let step = e.deltaY > 0 ? -vfoStep : vfoStep; 
+                vfoFreqTarget = Math.max(0, Math.min(MAX_FREQ, vfoFreqTarget + step)); updateVFO();
+            });
+            
+            document.getElementById('canvas-local-waterfall').addEventListener('mousedown', e => {
+                let rect = e.target.getBoundingClientRect();
+                let offsetPx = (e.clientX - rect.left) - (rect.width / 2);
+                let hzPerPx = (IF_BANDWIDTH * 2) / rect.width;
+                vfoFreqTarget += Math.round((offsetPx * hzPerPx) / vfoStep) * vfoStep;
+                vfoFreqTarget = Math.max(0, Math.min(MAX_FREQ, vfoFreqTarget)); updateVFO();
+            });
+
+            document.getElementById('af-gain').addEventListener('input', e => {
+                if(!isTransmitting) rxMasterGain.gain.value = (e.target.value / 100);
+            });
+            document.getElementById('rf-gain').addEventListener('input', e => {
+                ifBusSum.gain.value = (e.target.value / 100);
+            });
+
+            document.getElementById('filt-bw').addEventListener('input', e => {
+                filterBw = parseInt(e.target.value);
+                updateBwDisplay();
+                applyVFOHardware(); 
+            });
+
+            document.getElementById('rit-offset').addEventListener('input', e => {
+                ritOffset = parseInt(e.target.value);
+                let ritDisp = document.getElementById('ui-rit');
+                if(ritOffset === 0) { ritDisp.style.display = 'none'; } 
+                else {
+                    ritDisp.style.display = 'block';
+                    ritDisp.innerText = `RIT: ${ritOffset > 0 ? '+':''}${(ritOffset/1000).toFixed(2)}k`;
+                }
+            });
+            
+            document.getElementById('mon-level').addEventListener('input', e => {
+                if(isTransmitting && txMonitorGain) txMonitorGain.gain.setTargetAtTime(e.target.value / 100, actx.currentTime, 0.05);
+            });
+
+            document.getElementById('notch-toggle').addEventListener('change', e => {
+                document.getElementById('notch-freq').disabled = !e.target.checked; updateNotchVisual();
+            });
+            document.getElementById('notch-freq').addEventListener('input', updateNotchVisual);
+            
+            document.getElementById('tx-dist').addEventListener('input', e => {
+                document.getElementById('dist-val').innerText = `${e.target.value} km`;
+            });
+
+            document.getElementById('band-profile').addEventListener('change', e => {
+                currentBandProfile = e.target.value;
+                let prof = bandProfiles[currentBandProfile];
+                if(prof){
+                    vfoFreqTarget = prof.center;
+                    updateVFO();
+                    printToConsole(`[SYS] Perfil de banda ajustado a ${currentBandProfile}.`, 'sys');
+                }
+            });
+
+            document.getElementById('btn-ft8-custom').addEventListener('click', () => {
+                const msg = (document.getElementById('ft8-custom-msg').value || '').trim().toUpperCase();
+                if(!msg) return;
+                const normalized = normalizeFT8Message(msg.slice(0,37));
+                if(!normalized) { printToConsole('[FT8] Mensaje inválido. Formato: CQ CALL GRID / CALL CALL -10 / RR73', 'sys'); return; }
+                userFt8CustomMessage = normalized;
+                userFt8State = 'TX_CUSTOM';
+                document.getElementById('ft8-next-msg').innerText = `Auto-TX: CUSTOM`;
+                printToConsole(`[SYS] Mensaje FT8 personalizado en cola: ${userFt8CustomMessage}`, 'sys');
+            });
+
+            document.getElementById('btn-ft8-mode').addEventListener('click', () => {
+                tuneTo(7074000, 'USB');
+                filterBw = 3000;
+                document.getElementById('filt-bw').value = filterBw;
+                document.getElementById('sql-level').value = 0;
+                document.getElementById('notch-toggle').checked = false;
+                document.getElementById('notch-freq').disabled = true;
+                updateBwDisplay();
+                applyVFOHardware();
+                updateNotchVisual();
+                const cons = document.getElementById('data-console');
+                cons.innerHTML = '<div class=\"ft8-msg-row ft8-head\"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>';
+                printToConsole('[SYS] FT8 Mode activado: 7.074 MHz USB, SQL abierto, BW 3.0k.', 'sys');
+            });
+
+            const pttBtn = document.getElementById('btn-ptt');
+            const startVoiceTX = async () => {
+                if(!txMicNode) {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
+                        txMicNode = actx.createMediaStreamSource(stream); txMicNode.connect(txEq); 
+                    } catch(e) { console.log("Micrófono denegado. TX silencioso."); }
+                }
+                if(isTransmitting) return; 
+                playRelayClick(); pttBtn.classList.add('transmitting'); pttBtn.innerText = "ON AIR";
+                setGlobalTX(true);
+            };
+            const stopVoiceTX = () => {
+                if(!isTransmitting) return; 
+                playRelayClick(); pttBtn.classList.remove('transmitting'); pttBtn.innerText = "VOICE MIC PTT";
+                setGlobalTX(false);
+            };
+
+            pttBtn.addEventListener('mousedown', startVoiceTX); pttBtn.addEventListener('mouseup', stopVoiceTX); pttBtn.addEventListener('mouseleave', stopVoiceTX);
+            pttBtn.addEventListener('touchstart', (e)=>{ e.preventDefault(); startVoiceTX(); }); pttBtn.addEventListener('touchend', (e)=>{ e.preventDefault(); stopVoiceTX(); });
+
+            // CW KEYER Lógica
+            const cwBtn = document.getElementById('btn-cw-key');
+            let cwDownTime = 0;
+            const startCwTX = () => {
+                if(!isTransmitting) setGlobalTX(true);
+                txCwEnv.gain.setTargetAtTime(1.0, actx.currentTime, 0.005);
+                cwDownTime = Date.now();
+                cwIsDown = true;
+                
+                if(cwLastStateChange > 0) {
+                    let pauseDur = cwDownTime - cwLastStateChange;
+                    if(pauseDur > 300) cwDecodeBuffer.push(' ');
+                }
+            };
+            const stopCwTX = () => {
+                txCwEnv.gain.setTargetAtTime(0.0, actx.currentTime, 0.005);
+                cwLastStateChange = Date.now();
+                cwIsDown = false;
+                
+                let dur = cwLastStateChange - cwDownTime;
+                if(dur > 10 && dur < 150) cwDecodeBuffer.push('.'); 
+                else if(dur >= 150) cwDecodeBuffer.push('-'); 
+                
+                setTimeout(() => { if(!cwIsDown && isTransmitting) setGlobalTX(false); }, 400); 
+            };
+            
+            cwBtn.addEventListener('mousedown', startCwTX); cwBtn.addEventListener('mouseup', stopCwTX); cwBtn.addEventListener('mouseleave', () => { if(cwIsDown) stopCwTX(); });
+            cwBtn.addEventListener('touchstart', (e)=>{ e.preventDefault(); startCwTX(); }); cwBtn.addEventListener('touchend', (e)=>{ e.preventDefault(); stopCwTX(); });
+
+            // FT8 TX Lógica de Interfaz
+            const ft8Btn = document.getElementById('btn-tx-ft8');
+            ft8Btn.addEventListener('click', () => {
+                if(userFt8State === 'IDLE') {
+                    setupUserFT8CQ();
+                } else {
+                    userFt8State = 'IDLE';
+                    updateFT8NextMessage();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
