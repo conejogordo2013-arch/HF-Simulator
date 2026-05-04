@@ -442,8 +442,8 @@
                 </div>
                 <button class="btn-sm" id="btn-ft8-mode" style="margin-top:8px; width:100%; background:linear-gradient(180deg,#ec4899,#9d174d); color:#fff;">FT8 Mode</button>
                 <div class="btn-grid-4" style="margin-top: 12px;">
-                    <button class="btn-sm" id="btn-usb">USB</button>
-                    <button class="btn-sm active" id="btn-lsb">LSB</button>
+                    <button class="btn-sm active" id="btn-usb">USB</button>
+                    <button class="btn-sm" id="btn-lsb">LSB</button>
                     <button class="btn-sm" id="btn-cw">CW</button>
                     <button class="btn-sm" id="btn-am">AM</button>
                 </div>
@@ -503,7 +503,7 @@
         
         let vfoFreqTarget = 7074000; 
         let vfoFreqActual = 7074000; 
-        let currentMode = 'LSB';
+        let currentMode = 'USB';
         let filterBw = 2700; 
         let isTransmitting = false;
         let vfoStep = 100;
@@ -593,6 +593,11 @@
             buildWeaverTX();
             populateBotNetworks();
             setupUIEvents();
+            tuneTo(7074000, 'USB');
+            filterBw = 3000;
+            document.getElementById('filt-bw').value = filterBw;
+            document.getElementById('sql-level').value = 0;
+            updateBwDisplay();
             
             updateBwDisplay();
             updateVFO();
@@ -1296,8 +1301,6 @@
         // ================= FT8 ENGINE REALISTA =================
 
         function processFT8Decodes(utc) {
-            if(currentMode !== 'USB') return;
-            
             const decodeTs = new Date(utc.getTime() - 13000);
             const timeStr = `${String(decodeTs.getUTCHours()).padStart(2,'0')}${String(decodeTs.getUTCMinutes()).padStart(2,'0')}${String(decodeTs.getUTCSeconds()).padStart(2,'0')}`;
             let decodes = [];
