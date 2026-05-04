@@ -564,7 +564,6 @@
         let ft8LastPresenceCheckMs = 0;
         let ft8PresenceCached = false;
         let ft8PresenceHoldSlots = 0;
-        let ft8SymbolRegistry = new Map();
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
             '80m': {center:3700000, qrn:1.2, fade:0.35},
@@ -767,33 +766,85 @@
             PAYLOAD_SECONDS: 12.64,
             TONE_SPACING: 6.25,
             COSTAS: [3, 1, 4, 0, 6, 5, 2],
-            GRAY3: [0, 1, 3, 2, 6, 7, 5, 4],
-            INV_GRAY3: [0, 1, 3, 2, 7, 6, 4, 5],
-            packBits(message = '', seed = 0) {
-                const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
-                const bits = new Array(77).fill(0);
-                let h = 0x811c9dc5 ^ (Math.floor(seed * 1e6) >>> 0);
-                for (let i = 0; i < msg.length; i++) h = Math.imul(h ^ msg.charCodeAt(i), 0x01000193) >>> 0;
-                for (let i = 0; i < 77; i++) {
-                    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
-                    const c = msg.charCodeAt(i % msg.length) || 0;
-                    bits[i] = ((h >>> (i % 24)) ^ c ^ i) & 1;
+            GRAY3: [0, 1, 3, 2, 5, 6, 4, 7],
+            INV_GRAY3: [0, 1, 3, 2, 6, 4, 5, 7],
+            _alphaNum: ' 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ/',
+            _callsignSet: ' 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            _writeBits(bits, start, value, width) {
+                for (let i = 0; i < width; i++) bits[start + width - 1 - i] = (value >> i) & 1;
+            },
+            _readBits(bits, start, width) {
+                let v = 0;
+                for (let i = 0; i < width; i++) v = (v << 1) | (bits[start + i] ? 1 : 0);
+                return v >>> 0;
+            },
+            _encodeCall(call = '') {
+                const c = call.padEnd(6, ' ').slice(0, 6);
+                let v = 0;
+                for (let i = 0; i < 6; i++) v = v * this._callsignSet.length + Math.max(0, this._callsignSet.indexOf(c[i]));
+                return v >>> 0;
+            },
+            _decodeCall(v = 0) {
+                const base = this._callsignSet.length;
+                let out = new Array(6).fill(' ');
+                for (let i = 5; i >= 0; i--) { out[i] = this._callsignSet[v % base] || ' '; v = Math.floor(v / base); }
+                return out.join('').trim();
+            },
+            _encodeGrid(grid = '') {
+                if(!/^[A-R]{2}[0-9]{2}$/.test(grid)) return 0;
+                return ((grid.charCodeAt(0)-65) * 18 + (grid.charCodeAt(1)-65)) * 100 + parseInt(grid.slice(2),10);
+            },
+            _decodeGrid(v = 0) {
+                const a = Math.floor(v / 1800) % 18;
+                const b = Math.floor(v / 100) % 18;
+                const d = (v % 100).toString().padStart(2,'0');
+                return String.fromCharCode(65+a) + String.fromCharCode(65+b) + d;
+            },
+            _crc11(bits) {
+                let reg = 0x3ff;
+                for (let i = 0; i < 66; i++) {
+                    const bit = bits[i] ? 1 : 0;
+                    const fb = ((reg >> 10) & 1) ^ bit;
+                    reg = ((reg << 1) & 0x7ff) ^ (fb ? 0x385 : 0);
                 }
+                return reg & 0x7ff;
+            },
+            packBits(message = '') {
+                const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
+                const t = msg.split(' ');
+                const bits = new Array(77).fill(0);
+                const isCQ = t[0] === 'CQ';
+                const call1 = isCQ ? (t[1] || 'TEST') : (t[0] || 'TEST');
+                const call2 = isCQ ? 'CQ    ' : (t[1] || 'TEST');
+                const extra = isCQ ? (t[2] || 'AA00') : (t[2] || 'AA00');
+                this._writeBits(bits, 0, isCQ ? 1 : 0, 1);
+                this._writeBits(bits, 1, this._encodeCall(call1), 32);
+                this._writeBits(bits, 33, this._encodeCall(call2), 32);
+                this._writeBits(bits, 65, this._encodeGrid(extra), 11);
+                this._writeBits(bits, 76, 0, 1);
+                const crc = this._crc11(bits);
+                this._writeBits(bits, 66, crc, 11);
                 return bits;
             },
             unpackBits(bits77 = []) {
-                return bits77.slice(0,77);
+                const isCQ = this._readBits(bits77,0,1) === 1;
+                const call1 = this._decodeCall(this._readBits(bits77,1,32));
+                const call2 = this._decodeCall(this._readBits(bits77,33,32));
+                const grid = this._decodeGrid(this._readBits(bits77,65,11));
+                return isCQ ? `CQ ${call1} ${grid}` : `${call1} ${call2} ${grid}`;
             },
             ldpcEncode(bits77 = []) {
-                // Estructura fija para proteger frame en el simulador; mantiene longitud FT8 por 3-bit symbols.
-                const out = bits77.slice(0,77);
-                let parity = 0;
-                for (let i = 0; i < 77; i++) parity ^= (out[i] || 0);
-                for (let i = 0; i < 6; i++) out[(i * 13) % 77] ^= (parity >> (i % 1)) & 1;
-                return out;
+                const coded = new Array(174).fill(0);
+                for (let i = 0; i < 77; i++) coded[i] = bits77[i] || 0;
+                for (let p = 77; p < 174; p++) {
+                    let acc = 0;
+                    for (let i = 0; i < 77; i++) if (((i * 131 + p * 17) % 23) < 6) acc ^= coded[i];
+                    coded[p] = acc;
+                }
+                return coded;
             },
-            ldpcDecode(bits77 = []) {
-                return bits77.slice(0,77);
+            ldpcDecode(bits174 = []) {
+                return bits174.slice(0,77);
             },
             bitsToSymbols(bits77 = []) {
                 const tones = [];
@@ -804,9 +855,9 @@
                     else if (i >= 72) tones.push(this.COSTAS[i - 72]);
                     else {
                         const di = i < 36 ? i - 7 : i - 14;
-                        const b0 = coded[(di * 3) % 77] || 0;
-                        const b1 = coded[(di * 3 + 1) % 77] || 0;
-                        const b2 = coded[(di * 3 + 2) % 77] || 0;
+                        const b0 = coded[di * 3] || 0;
+                        const b1 = coded[di * 3 + 1] || 0;
+                        const b2 = coded[di * 3 + 2] || 0;
                         tones.push(this.GRAY3[(b0 << 2) | (b1 << 1) | b2]);
                     }
                 }
@@ -856,8 +907,21 @@
                 for (let i = 0; i < pcm.length; i++, o += 2) dv.setInt16(o, Math.max(-32768, Math.min(32767, pcm[i] * 32767)), true);
                 return new Blob([buf], { type: 'audio/wav' });
             },
-            encode(message = '', seed = 0) { return this.packBits(message, seed); },
-            decode(symbols = []) { return decodeFT8FromTones(symbols); },
+            encode(message = '') { return this.packBits(message); },
+            decode(symbols = []) {
+                if(!Array.isArray(symbols) || symbols.length !== 79) return '';
+                const softBits = [];
+                for (let i = 0; i < 79; i++) {
+                    if (i < 7 || (i >= 36 && i < 43) || i >= 72) continue;
+                    const di = i < 36 ? i - 7 : i - 14;
+                    const code = this.INV_GRAY3[symbols[i] & 7] || 0;
+                    softBits[di * 3] = (code >> 2) & 1;
+                    softBits[di * 3 + 1] = (code >> 1) & 1;
+                    softBits[di * 3 + 2] = code & 1;
+                }
+                const bits = this.ldpcDecode(softBits);
+                return this.unpackBits(bits);
+            },
             costasSync(tones = []) {
                 if (!tones || tones.length !== 79) return 0;
                 let score = 0;
@@ -880,17 +944,14 @@
 
         function ft8MessageToTones(message = '', dataSeed = 0) {
             const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
-            const tones = FT8Core.bitsToSymbols(FT8Core.encode(msg, dataSeed));
-            ft8SymbolRegistry.set(tones.join(','), msg);
-            return tones;
+            return FT8Core.bitsToSymbols(FT8Core.encode(msg));
         }
         function decodeFT8FromTones(tones) {
-            if(!Array.isArray(tones) || tones.length !== 79) return '';
-            return ft8SymbolRegistry.get(tones.join(',')) || '';
+            return FT8Core.decode(tones);
         }
         function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
             const sr = context.sampleRate;
-            const tones = ft8MessageToTones(message, isBot ? dataSeed : Math.random());
+            const tones = ft8MessageToTones(message, dataSeed);
             const pcm = FT8Core.normalizeAudio(FT8Core.symbolsToWaveform(tones, audioOffsetHz, sr));
             const buf = context.createBuffer(1, pcm.length, sr);
             buf.copyToChannel(pcm, 0);
