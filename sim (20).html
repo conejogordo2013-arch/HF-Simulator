@@ -561,6 +561,9 @@
         let ft8BasebandOffsetTx = 1500; 
         let userFt8CustomMessage = '';
         let ft8StrictMode = true;
+        let ft8LastPresenceCheckMs = 0;
+        let ft8PresenceCached = false;
+        let ft8PresenceHoldSlots = 0;
         let ft8SymbolRegistry = new Map();
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
@@ -1210,6 +1213,50 @@
         // ================= LOOP MOTOR Y FÍSICAS =================
         let physicsTime = 0;
         
+        function shouldProcessNow(now = new Date()) {
+            const slot = getCurrentFT8SlotTime(now);
+            const inDecodeWindow = slot.offsetSec >= 13.7 && slot.offsetSec <= 14.95;
+            return inDecodeWindow && !ft8DecodedThisCycle;
+        }
+
+        function detectFT8Presence(signalBuffer = null) {
+            const nowMs = Date.now();
+            if(nowMs - ft8LastPresenceCheckMs < 900) return ft8PresenceCached;
+            ft8LastPresenceCheckMs = nowMs;
+
+            const active = qsoNetworks.filter(n => n.type === 'FT8' && n.state === 'TX');
+            if(active.length === 0) {
+                ft8PresenceCached = false;
+                ft8PresenceHoldSlots = Math.max(0, ft8PresenceHoldSlots - 1);
+                return false;
+            }
+
+            // Gate ligero: energía + coherencia de spacing + sync parcial Costas
+            let coherentHits = 0;
+            let totalPower = 0;
+            active.forEach(net => {
+                const tones = net.lastTones || [];
+                if(tones.length !== 79) return;
+                const estPower = (net.bots?.[0]?.pwr || 0.1) * calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain);
+                totalPower += estPower;
+                let spacingOk = 0;
+                for(let i=1;i<Math.min(12, tones.length);i++) {
+                    const d = Math.abs((tones[i] - tones[i-1]) * FT8Core.TONE_SPACING);
+                    if(d <= 43.75) spacingOk++;
+                }
+                const costas = RX.costasSync(tones);
+                if(spacingOk >= 8 && costas >= 0.5) coherentHits++;
+            });
+
+            const noiseRef = Math.max(0.02, (0.8 - (vfoFreqActual / MAX_FREQ) * 0.6));
+            const snrGate = totalPower / noiseRef;
+            const present = coherentHits > 0 && snrGate > 0.7;
+            ft8PresenceCached = present;
+            if(present) ft8PresenceHoldSlots = 2;
+            else if(ft8PresenceHoldSlots > 0) { ft8PresenceHoldSlots--; ft8PresenceCached = true; }
+            return ft8PresenceCached;
+        }
+
         function botEngineLoop() {
             if(!actx) return;
             physicsTime += 0.05; let now = actx.currentTime;
@@ -1241,10 +1288,15 @@
                 ft8DecodedThisCycle = false;
             }
 
-            // Procesar decodificación cerca del fin de secuencia FT8 (slot de 15s)
-            if(ft8CycleTime >= 14.2 && !ft8DecodedThisCycle) {
-                ft8DecodedThisCycle = true;
-                processFT8Decodes(utc);
+            // Decodificación FT8 en dos etapas (gate + decode)
+            if(shouldProcessNow(utc)) {
+                if(detectFT8Presence()) {
+                    ft8DecodedThisCycle = true;
+                    processFT8Decodes(utc);
+                } else {
+                    ft8DecodedThisCycle = true;
+                    if(ft8StrictMode) printToConsole('[FT8] Gate: sin presencia válida, decoder en idle.', 'sys');
+                }
             }
 
             qsoNetworks.forEach(net => {
@@ -1466,18 +1518,7 @@
             decodes.sort((a,b) => a.freq - b.freq);
             if(decodes.length === 0) {
                 ft8EmptyDecodeCycles++;
-                if(ft8EmptyDecodeCycles >= 3) {
-                    tuneTo(7074000, 'USB');
-                    filterBw = 3000;
-                    document.getElementById('filt-bw').value = filterBw;
-                    document.getElementById('sql-level').value = 0;
-                    updateBwDisplay();
-                    applyVFOHardware();
-                    printToConsole('[FT8] Auto-recuperación decoder: retune 7.074 USB + BW 3.0k.', 'sys');
-                    ft8EmptyDecodeCycles = 0;
-                } else {
-                    printToConsole('[FT8] Sin decodificaciones en este slot.', 'sys');
-                }
+                printToConsole('[FT8] Sin decodificaciones en este slot.', 'sys');
             } else {
                 ft8EmptyDecodeCycles = 0;
             }
