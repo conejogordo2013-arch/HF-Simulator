@@ -551,6 +551,7 @@
         let ft8CycleTime = 0;
         let ft8DecodedThisCycle = false;
         let ft8CurrentSlot = -1;
+        let ft8EmptyDecodeCycles = 0;
         let userFt8State = 'IDLE'; // IDLE, TX_CQ, TX_REPLY
         let userFt8TargetCall = '';
         let userFt8TargetGrid = '';
@@ -1327,7 +1328,21 @@
 
             decodes.sort((a,b) => a.freq - b.freq);
             if(decodes.length === 0) {
-                printToConsole('[FT8] Sin decodificaciones: ajusta a 7.074 o 14.074 MHz USB y espera fin de slot 15s.', 'sys');
+                ft8EmptyDecodeCycles++;
+                if(ft8EmptyDecodeCycles >= 3) {
+                    tuneTo(7074000, 'USB');
+                    filterBw = 3000;
+                    document.getElementById('filt-bw').value = filterBw;
+                    document.getElementById('sql-level').value = 0;
+                    updateBwDisplay();
+                    applyVFOHardware();
+                    printToConsole('[FT8] Auto-recuperación decoder: retune 7.074 USB + BW 3.0k.', 'sys');
+                    ft8EmptyDecodeCycles = 0;
+                } else {
+                    printToConsole('[FT8] Sin decodificaciones en este slot.', 'sys');
+                }
+            } else {
+                ft8EmptyDecodeCycles = 0;
             }
             
             if(decodes.length === 0 && ft8StrictMode) { printToConsole('[FT8] Decoder: sin tramas válidas en este ciclo.', 'sys'); }
