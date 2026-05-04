@@ -555,6 +555,7 @@
         let userFt8AutoSeq = 0; // 0=CQ, 1=Report, 2=RReport, 3=RR73, 4=73
         let ft8BasebandOffsetTx = 1500; 
         let userFt8CustomMessage = '';
+        let ft8StrictMode = true;
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
             '80m': {center:3700000, qrn:1.2, fade:0.35},
@@ -721,11 +722,22 @@
             return buf;
         }
 
+        
+        function normalizeFT8Message(raw) {
+            const msg = (raw || '').toUpperCase().trim().replace(/\s+/g, ' ').slice(0, 37);
+            if(!ft8StrictMode) return msg;
+            const cq = /^CQ [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+            const grid = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+            const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?[0-2][0-9]$/;
+            const rr73 = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} (RR73|73)$/;
+            return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
+        }
+
         // Generador de Forma de Onda FT8 (CPFSK 8-Tone)
         function ft8MessageToTones(message = '', dataSeed = 0) {
             const tones = [];
             const costas = [3, 1, 4, 0, 6, 5, 2];
-            const msg = (message || '').toUpperCase().slice(0, 37);
+            const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
             let seed = 2166136261 >>> 0;
             for(let i = 0; i < msg.length; i++) { seed = Math.imul(seed ^ msg.charCodeAt(i), 16777619) >>> 0; }
             seed ^= Math.floor((dataSeed || 0) * 1e6) >>> 0;
@@ -1281,6 +1293,7 @@
 
             decodes.sort((a,b) => a.freq - b.freq);
             
+            if(decodes.length === 0 && ft8StrictMode) { printToConsole('[FT8] Decoder: sin tramas válidas en este ciclo.', 'sys'); }
             decodes.forEach(d => {
                 let isToMe = d.msg.includes(myCallsign);
                 let colorClass = isToMe ? 'ft8-tx-line' : 'ft8-rx-line';
@@ -1750,7 +1763,9 @@
             document.getElementById('btn-ft8-custom').addEventListener('click', () => {
                 const msg = (document.getElementById('ft8-custom-msg').value || '').trim().toUpperCase();
                 if(!msg) return;
-                userFt8CustomMessage = msg.slice(0,37);
+                const normalized = normalizeFT8Message(msg.slice(0,37));
+                if(!normalized) { printToConsole('[FT8] Mensaje inválido. Formato: CQ CALL GRID / CALL CALL -10 / RR73', 'sys'); return; }
+                userFt8CustomMessage = normalized;
                 userFt8State = 'TX_CUSTOM';
                 document.getElementById('ft8-next-msg').innerText = `Auto-TX: CUSTOM`;
                 printToConsole(`[SYS] Mensaje FT8 personalizado en cola: ${userFt8CustomMessage}`, 'sys');
