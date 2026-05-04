@@ -54,9 +54,9 @@
         .rig-container {
             background: var(--panel-texture);
             border: 2px solid #2d3748; border-radius: 12px; 
-            width: 98vw; max-width: 1700px; height: 96vh;
+            width: 99vw; max-width: 1780px; height: 97vh;
             box-shadow: 0 40px 80px rgba(0,0,0,1), inset 0 2px 5px rgba(255,255,255,0.15), inset 0 -5px 25px rgba(0,0,0,0.9);
-            display: grid; grid-template-columns: 1fr 450px; grid-template-rows: auto auto 1fr;
+            display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 72px 1fr;
             overflow: hidden; position: relative;
         }
 
@@ -83,7 +83,7 @@
         .header-tools { display: flex; gap: 25px; align-items: center; }
         .clock { font-family: 'Share Tech Mono', monospace; font-size: 1.3rem; color: #f59e0b; background: #050505; padding: 6px 15px; border-radius: 4px; border: 1px solid #333; box-shadow: inset 0 0 10px rgba(0,0,0,1); text-shadow: 0 0 8px rgba(245, 158, 11, 0.6);}
         
-        .status-indicators { display: flex; gap: 15px; }
+        .status-indicators { display: flex; gap: 10px; }
         .indicator { padding: 6px 15px; border-radius: 4px; font-size: 0.85rem; font-weight: 900; background: #111; color: #333; letter-spacing: 2px; border: 1px solid #000; transition: all 0.1s;}
         .indicator.active.rx { background: #064e3b; color: #fff; box-shadow: 0 0 20px var(--rx-color), inset 0 2px 4px rgba(255,255,255,0.4); border-color: var(--rx-color); text-shadow: 0 0 5px #fff;}
         .indicator.active.tx { background: #7f1d1d; color: #fff; box-shadow: 0 0 25px var(--tx-color), inset 0 2px 4px rgba(255,255,255,0.4); border-color: var(--tx-color); text-shadow: 0 0 5px #fff;}
@@ -109,15 +109,15 @@
         .global-cursor { position: absolute; top:0; bottom:0; width:2px; background: rgba(245, 158, 11, 0.9); box-shadow: 0 0 10px #f59e0b; pointer-events:none; z-index: 5;}
 
         /* MAIN DISPLAY */
-        .main-display { padding: 20px; display: flex; flex-direction: column; gap: 15px; height: 100%; overflow: hidden; background: rgba(0,0,0,0.4);}
+        .main-display { padding: 12px; display: flex; flex-direction: column; gap: 15px; height: 100%; overflow: hidden; background: rgba(0,0,0,0.4);}
         .canvas-wrapper {
             background: #000; border: 4px solid #1e293b; border-radius: 10px;
             position: relative; flex-grow: 1; overflow: hidden; display: flex; flex-direction: column;
             box-shadow: inset 0 0 40px rgba(0,0,0,1), 0 10px 25px rgba(0,0,0,0.6), 0 0 0 1px #000;
         }
         
-        #canvas-local { width: 100%; flex: 1.2; display: block; border-bottom: 2px solid #1a1a1a; cursor: crosshair;}
-        #canvas-waterfall { width: 100%; flex: 1.8; display: block; background: #000; cursor: crosshair;}
+        #canvas-local { width: 100%; flex: 1.45; display: block; border-bottom: 2px solid #1a1a1a; cursor: crosshair;}
+        #canvas-waterfall { width: 100%; flex: 0.8; display: block; background: #000; cursor: crosshair;}
         .canvas-label { position: absolute; top: 10px; left: 15px; font-size: 0.8rem; color: #a7f3d0; font-family: 'Share Tech Mono', monospace; z-index: 10; text-shadow: 0 0 8px #10b981, 0 0 2px #000;}
         
         .vfo-passband { position: absolute; top: 0; bottom: 0; background: rgba(16, 185, 129, 0.15); border-left: 1px dashed var(--rx-color); border-right: 1px dashed var(--rx-color); pointer-events: none; z-index: 4; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.2); transition: width 0.1s, left 0.1s;}
@@ -125,7 +125,7 @@
         .notch-indicator { position: absolute; top: 0; bottom: 0; width: 4px; background: rgba(245, 158, 11, 0.7); border-left: 1px solid #f59e0b; pointer-events: none; z-index: 6; display: none; box-shadow: 0 0 8px #f59e0b;}
 
         /* CONTROL PANEL */
-        .control-panel { background: linear-gradient(to right, #0b0f17, #151d2b); padding: 25px; border-left: 3px solid #000; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; box-shadow: -15px 0 40px rgba(0,0,0,0.9); z-index: 5;}
+        .control-panel { background: linear-gradient(to right, #0b0f17, #151d2b); padding: 10px; border-left: 3px solid #000; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; box-shadow: -15px 0 40px rgba(0,0,0,0.9); z-index: 5;}
         .control-panel::-webkit-scrollbar { width: 8px; }
         .control-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
 
@@ -154,12 +154,13 @@
         .meter-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: #059669; margin-top: 6px; font-weight: 900; font-family: 'Share Tech Mono', monospace;}
 
         /* BOTONES FISICOS */
-        .ctrl-group { border: 1px solid #1e293b; border-radius: 8px; padding: 18px; background: rgba(0,0,0,0.5); box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 20px rgba(0,0,0,0.4); flex-shrink: 0;}
+        .ctrl-group { border: 1px solid #1e293b; border-radius: 8px; padding: 12px; background: rgba(0,0,0,0.5); box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 20px rgba(0,0,0,0.4); flex-shrink: 0;}
         .ctrl-title { font-size: 0.75rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 15px; display: block; font-weight: 900; letter-spacing: 2px; border-bottom: 1px solid #334155; padding-bottom: 8px; text-shadow: 0 1px 2px #000;}
         
         .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
         .btn-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .btn-sm { 
+            min-height: 28px;
             background: linear-gradient(180deg, #334155, #1e293b); color: #cbd5e1; border: 1px solid #0f172a; 
             padding: 10px 5px; border-radius: 5px; font-size: 0.75rem; font-weight: bold; cursor: pointer; 
             transition: 0.1s; text-shadow: 0 -1px 1px #000; box-shadow: inset 0 1px 2px rgba(255,255,255,0.15), 0 5px 8px rgba(0,0,0,0.6);
@@ -193,7 +194,7 @@
         }
 
         /* Main VFO Knob */
-        .vfo-control-wrapper { display: flex; flex-direction: column; gap: 15px; align-items: center; background: rgba(0,0,0,0.6); padding: 20px; border-radius: 10px; border: 1px solid #1e293b; box-shadow: inset 0 8px 20px rgba(0,0,0,0.7), 0 5px 15px rgba(0,0,0,0.3); flex-shrink: 0;}
+        .vfo-control-wrapper { display: flex; flex-direction: column; gap: 10px; align-items: center; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 10px; border: 1px solid #1e293b; box-shadow: inset 0 8px 20px rgba(0,0,0,0.7), 0 5px 15px rgba(0,0,0,0.3); flex-shrink: 0;}
         .vfo-wheel-container { position: relative; width: 100%; height: 50px; display: flex; justify-content: center; align-items: center;}
         
         .vfo-wheel { width: 100%; -webkit-appearance: none; background: transparent; position: relative; z-index: 2; height: 40px;}
@@ -233,7 +234,7 @@
         
         /* LOG / MONITOR */
         .station-log { 
-            height: 120px; overflow-y: auto; font-size: 0.75rem; color: #9ca3af; background: #050505; 
+            height: 100px; overflow-y: auto; font-size: 0.75rem; color: #9ca3af; background: #050505; 
             border: 2px solid #1e293b; padding: 5px; border-radius: 4px; box-shadow: inset 0 8px 20px rgba(0,0,0,0.9);
             font-family: 'Share Tech Mono', monospace; position: relative;
         }
@@ -266,7 +267,8 @@
         }
         .ft8-console::-webkit-scrollbar { width: 6px; }
         .ft8-console::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        .ft8-msg-row { display: grid; grid-template-columns: 40px 35px 35px 45px 1fr; border-bottom: 1px dotted #1e293b; padding: 2px 0; cursor: pointer;}
+        .ft8-msg-row { display: grid; grid-template-columns: 46px 30px 30px 42px 1fr; border-bottom: 1px dotted #1e293b; padding: 1px 0; cursor: pointer; font-size: 0.68rem;}
+        .ft8-head { position: sticky; top: 0; z-index: 3; background:#020617; color:#93c5fd; font-weight:700; border-bottom:1px solid #334155; }
         .ft8-msg-row:hover { background: #111827; }
         .ft8-tx-line { color: #ef4444; text-shadow: 0 0 4px rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.05); }
         .ft8-rx-line { color: #f59e0b; text-shadow: 0 0 4px rgba(245, 158, 11, 0.5); }
@@ -292,6 +294,7 @@
         <div class="header">
             <div class="brand">IA<span>SDR</span><span class="pro">ATMOSFERA PRO</span></div>
             <div class="header-tools">
+                <div class="clock" id="atm-status" style="font-size:0.85rem; color:#93c5fd;">SFI 120 | Kp 2 | Noche</div>
                 <div class="clock" id="utc-clock">00:00:00 UTC</div>
                 <div class="status-indicators">
                     <div class="indicator active rx" id="ind-rx">RX</div>
@@ -329,11 +332,16 @@
                 <div class="ctrl-group" style="margin-bottom: 0; padding: 15px; background: rgba(0,0,0,0.6);">
                     <span class="ctrl-title" style="margin-bottom: 5px; color: #db2777;">TERMINAL FT8 / DATA (WSJT-X)</span>
                     <div class="ft8-console-wrapper">
-                        <div class="ft8-status-bar">
+                        <div class="ft8-status-bar" style="position:sticky; top:0; z-index:2;">
                             <span id="ft8-cycle-timer">Seq: 0.0s</span>
                             <span class="ft8-tx-next" id="ft8-next-msg">Auto-TX: OFF</span>
                         </div>
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap:6px;">
+                            <input id="ft8-custom-msg" maxlength="37" placeholder="CQ IA1SDR IM55 o CALL IA1SDR -10" style="background:#0b1020; color:#e2e8f0; border:1px solid #334155; border-radius:4px; padding:6px; font-family: 'Share Tech Mono', monospace;">
+                            <button class="btn-sm" id="btn-ft8-custom" style="padding:6px 10px;">TX MSG</button>
+                        </div>
                         <div class="ft8-console" id="data-console">
+                            <div class="ft8-msg-row ft8-head"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>
                             <div class="ft8-sys-line">[SYS] Iniciando decodificador WSJT-X integrado...</div>
                             <div class="ft8-sys-line">[SYS] Click en un mensaje CQ para responder.</div>
                         </div>
@@ -406,7 +414,17 @@
                         </select>
                     </div>
                 </div>
-                <div style="margin-top: 15px;">
+                <div style="margin-top: 12px;">
+                    <span class="knob-label">BANDA ANTENA / PROPAGACIÓN</span>
+                    <select id="band-profile" class="btn-sm" style="width: 100%; margin-top: 5px;">
+                        <option value="160m">160m (1.8 MHz)</option>
+                        <option value="80m">80m (3.5 MHz)</option>
+                        <option value="40m" selected>40m (7 MHz)</option>
+                        <option value="20m">20m (14 MHz)</option>
+                        <option value="10m">10m (28 MHz)</option>
+                    </select>
+                </div>
+                <div style="margin-top: 12px;">
                     <span class="knob-label">DISTANCIA OBJETIVO: <span id="dist-val" style="color:#a7f3d0;">5000 km</span></span>
                     <input type="range" class="dial-knob" id="tx-dist" min="1" max="20000" value="5000" style="width: 100%; margin-top: 5px;">
                 </div>
@@ -422,6 +440,7 @@
                     <button class="btn-sm" onclick="tuneTo(28400000, 'USB')">10m SSB</button>
                     <button class="btn-sm" onclick="tuneTo(1200000, 'AM')">BC AM</button>
                 </div>
+                <button class="btn-sm" id="btn-ft8-full" style="margin-top:8px; width:100%; background:linear-gradient(180deg,#ec4899,#9d174d); color:#fff;">MODO FT8 COMPLETO</button>
                 <div class="btn-grid-4" style="margin-top: 12px;">
                     <button class="btn-sm" id="btn-usb">USB</button>
                     <button class="btn-sm active" id="btn-lsb">LSB</button>
@@ -482,8 +501,8 @@
         const IF_CENTER = 15000; 
         const IF_BANDWIDTH = 12000; 
         
-        let vfoFreqTarget = 7150000; 
-        let vfoFreqActual = 7150000; 
+        let vfoFreqTarget = 7074000; 
+        let vfoFreqActual = 7074000; 
         let currentMode = 'LSB';
         let filterBw = 2700; 
         let isTransmitting = false;
@@ -526,10 +545,12 @@
         let userTxPower = 100;
         let userAntGain = 2.15;
         let targetDistanceKm = 5000;
+        let atmos = { sfi: 120, kp: 2, night: false, storm: 0.1 };
 
         // === VARIABLES ESTADO FT8 REAL ===
         let ft8CycleTime = 0;
         let ft8DecodedThisCycle = false;
+        let ft8CurrentSlot = -1;
         let userFt8State = 'IDLE'; // IDLE, TX_CQ, TX_REPLY
         let userFt8TargetCall = '';
         let userFt8TargetGrid = '';
@@ -537,6 +558,16 @@
         let userFt8TxMessage = '';
         let userFt8AutoSeq = 0; // 0=CQ, 1=Report, 2=RReport, 3=RR73, 4=73
         let ft8BasebandOffsetTx = 1500; 
+        let userFt8CustomMessage = '';
+        let ft8StrictMode = true;
+        const bandProfiles = {
+            '160m': {center:1900000, qrn:1.6, fade:0.55},
+            '80m': {center:3700000, qrn:1.2, fade:0.35},
+            '40m': {center:7074000, qrn:1.0, fade:0.22},
+            '20m': {center:14074000, qrn:0.65, fade:0.15},
+            '10m': {center:28400000, qrn:0.35, fade:0.08}
+        };
+        let currentBandProfile = '40m';
 
         document.getElementById('btn-power').addEventListener('click', async () => {
             const overlay = document.getElementById('power-overlay');
@@ -569,6 +600,8 @@
             requestAnimationFrame(renderGraphics);
             setInterval(botEngineLoop, 50); 
             setInterval(simulateQRN, 300); 
+            setInterval(updateAtmosphereModel, 2000);
+            updateAtmosphereModel();
         });
 
         function updateClock() {
@@ -578,6 +611,17 @@
             const s = String(now.getUTCSeconds()).padStart(2, '0');
             document.getElementById('utc-clock').innerText = `${h}:${m}:${s} UTC`;
         }
+        function updateAtmosphereModel() {
+            const now = new Date();
+            const hour = now.getUTCHours();
+            const night = (hour < 5 || hour > 18);
+            const dayFactor = night ? 0.7 : 1.0;
+            atmos.night = night;
+            atmos.sfi = Math.floor(95 + (Math.sin(now.getTime()/7200000) + 1) * 35 * dayFactor);
+            atmos.kp = Math.max(1, Math.min(7, Math.floor(1 + (Math.cos(now.getTime()/1800000) + 1) * 2.6)));
+            atmos.storm = Math.max(0, (atmos.kp - 3) / 6);
+            document.getElementById('atm-status').innerText = `SFI ${atmos.sfi} | Kp ${atmos.kp} | ${night ? 'Noche' : 'Día'}`;
+        }
 
         function printToConsole(text, type='sys') {
             const cons = document.getElementById('data-console');
@@ -585,6 +629,11 @@
                 cons.innerHTML += `<div class="ft8-sys-line">${text}</div>`;
             } else {
                 cons.innerHTML += text; // text ya viene formateado como row para FT8
+            }
+            const rows = cons.querySelectorAll('.ft8-msg-row:not(.ft8-head), .ft8-sys-line');
+            if(rows.length > 120) {
+                const removeCount = rows.length - 120;
+                for(let i=0; i<removeCount; i++) rows[i].remove();
             }
             cons.scrollTop = cons.scrollHeight;
         }
@@ -682,8 +731,35 @@
             return buf;
         }
 
+        
+        function normalizeFT8Message(raw) {
+            const msg = (raw || '').toUpperCase().trim().replace(/\s+/g, ' ').slice(0, 37);
+            if(!ft8StrictMode) return msg;
+            const cq = /^CQ [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+            const grid = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
+            const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?(0?[1-9]|1[0-9]|2[0-9])$/;
+            const rr73 = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} (RR73|73)$/;
+            return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
+        }
+
         // Generador de Forma de Onda FT8 (CPFSK 8-Tone)
-        function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0) {
+        function ft8MessageToTones(message = '', dataSeed = 0) {
+            const tones = [];
+            const costas = [3, 1, 4, 0, 6, 5, 2];
+            const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
+            let seed = 2166136261 >>> 0;
+            for(let i = 0; i < msg.length; i++) { seed = Math.imul(seed ^ msg.charCodeAt(i), 16777619) >>> 0; }
+            seed ^= Math.floor((dataSeed || 0) * 1e6) >>> 0;
+            const nextTone = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed & 7; };
+            for(let i = 0; i < 79; i++) {
+                if(i < 7) tones.push(costas[i]);
+                else if(i >= 36 && i < 43) tones.push(costas[i - 36]);
+                else if(i >= 72) tones.push(costas[i - 72]);
+                else tones.push(nextTone());
+            }
+            return tones;
+        }
+        function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
             const sr = context.sampleRate;
             const symbolTime = 0.160; 
             const totalSymbols = 79;
@@ -691,22 +767,15 @@
             const buf = context.createBuffer(1, len, sr);
             const data = buf.getChannelData(0);
 
-            const costas = [3, 1, 4, 0, 6, 5, 2];
             let phase = 0;
-            
-            let seed = isBot ? dataSeed : Math.random();
-            const randomTone = () => { seed = (seed * 9301 + 49297) % 233280; return Math.floor((seed / 233280) * 8); };
+            const tones = ft8MessageToTones(message, isBot ? dataSeed : Math.random());
 
             for(let i=0; i<len; i++) {
                 let t = i / sr;
                 let symbolIdx = Math.floor(t / symbolTime);
                 if (symbolIdx >= totalSymbols) break;
 
-                let toneValue;
-                if (symbolIdx < 7) toneValue = costas[symbolIdx];
-                else if (symbolIdx >= 36 && symbolIdx < 43) toneValue = costas[symbolIdx - 36];
-                else if (symbolIdx >= 72 && symbolIdx < 79) toneValue = costas[symbolIdx - 72];
-                else toneValue = randomTone();
+                let toneValue = tones[symbolIdx];
 
                 let freq = audioOffsetHz + (toneValue * 6.25);
                 phase += (2 * Math.PI * freq) / sr;
@@ -722,15 +791,22 @@
         }
 
         function genCall() {
-            const p = ['W','K','N','EA','LU','PY','JA','VK','G','F','DL','I','XE','CE'];
-            const n = Math.floor(Math.random()*10);
-            const s = String.fromCharCode(65+Math.random()*26, 65+Math.random()*26) + (Math.random()>0.5 ? String.fromCharCode(65+Math.random()*26) : '');
-            return p[Math.floor(Math.random()*p.length)] + n + s;
+            const prefixes = ['K','N','W','AA','AB','AC','AD','AE','AF','AG','EA','F','DL','I','JA','VK','PY','LU'];
+            const prefix = prefixes[Math.floor(Math.random()*prefixes.length)];
+            const digit = Math.floor(Math.random()*10);
+            const sufLen = Math.random() > 0.35 ? 3 : 2;
+            let suffix = '';
+            for(let i=0;i<sufLen;i++) suffix += String.fromCharCode(65 + Math.floor(Math.random()*26));
+            return `${prefix}${digit}${suffix}`;
         }
         function genGrid() {
-            const a = ['I','J','E','F','G','H'];
-            const b = ['M','N','O','P','Q','R'];
-            return a[Math.floor(Math.random()*a.length)] + b[Math.floor(Math.random()*b.length)] + Math.floor(Math.random()*10) + Math.floor(Math.random()*10);
+            const A = String.fromCharCode(65 + Math.floor(Math.random()*18));
+            const B = String.fromCharCode(65 + Math.floor(Math.random()*18));
+            return `${A}${B}${Math.floor(Math.random()*10)}${Math.floor(Math.random()*10)}`;
+        }
+        function genFT8Report() {
+            const value = Math.floor(Math.random()*24) + 1;
+            return `-${String(value).padStart(2, '0')}`;
         }
 
         function populateBotNetworks() {
@@ -760,12 +836,12 @@
 
             // FT8 Bots on 20m (14.074 MHz) y 40m (7.074 MHz)
             const ft8Freqs = [14074000, 14074000, 14074000, 7074000, 7074000];
-            for(let i=0; i<25; i++) {
+            for(let i=0; i<60; i++) {
                 let offset = 300 + Math.random()*2200; 
                 let bfreq = ft8Freqs[i % ft8Freqs.length];
                 qsoNetworks.push({
                     id: 'net_ft8_'+i, freq: bfreq, type: 'FT8', mode: 'USB', basebandOffset: offset,
-                    bots: [ {call: genCall(), grid: genGrid(), pwr: 0.2 + Math.random()*0.8, seed: Math.random(), ft8State: 'CQ', ft8Target: ''} ], 
+                    bots: [ {call: genCall(), grid: genGrid(), pwr: 0.2 + Math.random()*0.8, seed: Math.random(), ft8State: 'CQ', ft8Target: '', lastMsg:''} ], 
                     state: 'IDLE', timer: 0, activeBotIdx: 0,
                     fadingRates: [0.05, 0.1], fadingPhases: [Math.random()*Math.PI, 0], activeNodes: null,
                     currentMessage: ''
@@ -825,7 +901,10 @@
 
         function simulateQRN() {
             if(!actx) return;
-            let bandMultiplier = Math.max(0.1, 1.0 - (vfoFreqTarget / 15000000));
+            let prof = bandProfiles[currentBandProfile] || bandProfiles['40m'];
+            updateAtmosphereModel();
+            let ionoPenalty = (atmos.kp * 0.12) + (atmos.night ? 0.12 : 0);
+            let bandMultiplier = Math.max(0.08, ((1.0 - (vfoFreqTarget / 22000000)) + ionoPenalty) * prof.qrn);
             let antFactor = 1 + (userAntGain / 10);
             if(Math.random() < 0.3 * bandMultiplier) {
                 let now = actx.currentTime;
@@ -913,6 +992,10 @@
         function calculatePathLoss(freqHz, distanceKm, txPowW, antGainDBi) {
             let freqMHz = freqHz / 1000000;
             let fspl = 32.44 + 20 * Math.log10(freqMHz) + 20 * Math.log10(Math.max(1, distanceKm));
+            const mufBonus = Math.max(-8, Math.min(8, (atmos.sfi - 110) * 0.08));
+            const stormLoss = atmos.kp * 1.35;
+            const nightLoss = atmos.night ? (freqMHz > 12 ? 4.5 : -2.0) : 0;
+            fspl += stormLoss + nightLoss - mufBonus;
             let pwrDBm = 10 * Math.log10(txPowW * 1000);
             let rxPwrDBm = pwrDBm + antGainDBi - fspl;
             
@@ -950,7 +1033,7 @@
                 nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq - net.basebandOffset; 
                 nodes.mod = actx.createGain(); nodes.mod.gain.value = 0;
                 nodes.audio = actx.createBufferSource(); 
-                nodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, net.bots[0].seed); 
+                nodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, net.bots[0].seed, net.currentMessage || `CQ ${net.bots[0].call}`); 
                 nodes.audio.loop = true; 
                 
                 nodes.f1 = actx.createBiquadFilter(); nodes.f1.type = 'highpass'; nodes.f1.frequency.value = ifFreq - 200;
@@ -1043,13 +1126,17 @@
             let utcSecs = utc.getUTCSeconds();
             let utcMs = utc.getUTCMilliseconds();
             ft8CycleTime = (utcSecs % 15) + (utcMs / 1000);
+            const slot = Math.floor((utc.getTime() / 1000) / 15);
             
             document.getElementById('ft8-cycle-timer').innerText = `Seq: ${ft8CycleTime.toFixed(1)}s`;
 
-            if(ft8CycleTime < 1.0) ft8DecodedThisCycle = false;
+            if(slot !== ft8CurrentSlot) {
+                ft8CurrentSlot = slot;
+                ft8DecodedThisCycle = false;
+            }
 
-            // Procesar Decodificaciones de FT8 (Segundo 13.0)
-            if(ft8CycleTime >= 13.0 && !ft8DecodedThisCycle) {
+            // Procesar decodificación cerca del fin de secuencia FT8 (slot de 15s)
+            if(ft8CycleTime >= 14.2 && !ft8DecodedThisCycle) {
                 ft8DecodedThisCycle = true;
                 processFT8Decodes(utc);
             }
@@ -1069,8 +1156,8 @@
 
                 if (net.type === 'FT8') {
                     // Start of sequence
-                    if(ft8CycleTime < 0.5 && net.state === 'IDLE' && Math.random() > 0.5) {
-                        net.state = 'TX'; net.timer = 12.6; 
+                    if(ft8CycleTime < 0.18 && net.state === 'IDLE' && Math.random() > 0.35) {
+                        net.state = 'TX'; net.timer = 12.64; 
                         
                         // Bot State Machine Logic
                         let bot = net.bots[0];
@@ -1082,7 +1169,7 @@
                             bot.ft8State = 'REPORT';
                             net.currentMessage = `${bot.ft8Target} ${bot.call} ${bot.grid}`;
                         } else if (bot.ft8State === 'REPORT') {
-                            net.currentMessage = `${bot.ft8Target} ${bot.call} -${Math.floor(Math.random()*15)+5}`;
+                            net.currentMessage = `${bot.ft8Target} ${bot.call} ${genFT8Report()}`;
                             bot.ft8State = 'RR73';
                         } else if (bot.ft8State === 'RR73') {
                             net.currentMessage = `${bot.ft8Target} ${bot.call} RR73`;
@@ -1092,11 +1179,21 @@
                             bot.ft8State = 'CQ';
                         }
 
+                        net.currentMessage = normalizeFT8Message(net.currentMessage) || `CQ ${bot.call} ${bot.grid}`;
+                        bot.lastMsg = net.currentMessage;
+                        if(net.activeNodes && net.activeNodes.audio) {
+                            try { net.activeNodes.audio.stop(); } catch(e) {}
+                            net.activeNodes.audio = actx.createBufferSource();
+                            net.activeNodes.audio.buffer = generateFT8Buffer(actx, net.basebandOffset, true, bot.seed + Math.random(), net.currentMessage);
+                            net.activeNodes.audio.loop = false;
+                            net.activeNodes.audio.connect(net.activeNodes.mod.gain);
+                            net.activeNodes.audio.start(now);
+                        }
                         if(net.activeNodes && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(1.0, now, 0.1);
                     }
                     if(net.state === 'TX') {
                         net.timer -= 0.05;
-                        if(net.timer <= 0 || ft8CycleTime >= 12.6) {
+                        if(net.timer <= 0 || ft8CycleTime >= 12.64) {
                             net.state = 'IDLE';
                             if(net.activeNodes && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(0.0, now, 0.1);
                         }
@@ -1190,16 +1287,17 @@
         // ================= FT8 ENGINE REALISTA =================
 
         function processFT8Decodes(utc) {
-            if(currentMode !== 'USB') return; 
+            if(currentMode !== 'USB') return;
             
-            const timeStr = `${String(utc.getUTCHours()).padStart(2,'0')}${String(utc.getUTCMinutes()).padStart(2,'0')}${String(utc.getUTCSeconds()-13).padStart(2,'0')}`;
+            const decodeTs = new Date(utc.getTime() - 13000);
+            const timeStr = `${String(decodeTs.getUTCHours()).padStart(2,'0')}${String(decodeTs.getUTCMinutes()).padStart(2,'0')}${String(decodeTs.getUTCSeconds()).padStart(2,'0')}`;
             let decodes = [];
 
             qsoNetworks.forEach(net => {
                 if(net.type !== 'FT8' || net.state !== 'TX' || !net.currentMessage) return;
                 
                 let df = net.freq - vfoFreqActual;
-                if(df > -100 && df < 3000) { 
+                if(df > -3000 && df < 3000) { 
                     // Calcular SNR basado en la atenuación
                     let baseGain = calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain); 
                     let snr = Math.floor((baseGain * 60) - 120 + 75); // Normalización para mostrar ~ -24 a +10
@@ -1215,6 +1313,9 @@
             });
 
             decodes.sort((a,b) => a.freq - b.freq);
+            if(decodes.length === 0) {
+                printToConsole('[FT8] Sin decodificaciones: ajusta a 7.074 o 14.074 MHz USB y espera fin de slot 15s.', 'sys');
+            }
             
             decodes.forEach(d => {
                 let isToMe = d.msg.includes(myCallsign);
@@ -1253,7 +1354,9 @@
                 btn.innerText = 'Enable FT8 TX';
                 btn.style.background = 'linear-gradient(180deg, #334155, #1e293b)';
             } else {
-                if(userFt8State === 'TX_CQ') {
+                if(userFt8State === 'TX_CUSTOM') {
+                    userFt8TxMessage = userFt8CustomMessage || '';
+                } else if(userFt8State === 'TX_CQ') {
                     userFt8TxMessage = `CQ ${myCallsign} ${myGrid}`;
                 } else if (userFt8State === 'TX_REPLY') {
                     if(userFt8AutoSeq === 1) userFt8TxMessage = `${userFt8TargetCall} ${myCallsign} ${myGrid}`;
@@ -1289,7 +1392,7 @@
 
         // Bucle para transmisión automática FT8 en límite de ciclo 15s
         setInterval(() => {
-            if(userFt8State !== 'IDLE' && ft8CycleTime < 0.5 && !isTransmitting) {
+            if(userFt8State !== 'IDLE' && ft8CycleTime < 0.18 && !isTransmitting) {
                 executeUserFT8Tx();
             }
         }, 200);
@@ -1297,7 +1400,7 @@
         function executeUserFT8Tx() {
             if(!userFt8TxMessage) return;
             
-            let ft8Buf = generateFT8Buffer(actx, ft8BasebandOffsetTx, false);
+            let ft8Buf = generateFT8Buffer(actx, ft8BasebandOffsetTx, false, 0, userFt8TxMessage);
             let ft8Src = actx.createBufferSource();
             ft8Src.buffer = ft8Buf;
             ft8Src.connect(txDataGain);
@@ -1575,7 +1678,7 @@
                 for(let x = 0; x < wW; x++) {
                     let binIdx = startBin + Math.floor((x / wW) * numBins); 
                     let val = localSpectrumData[binIdx] || 0;
-                    val = Math.min(255, (val * 1.3) + (Math.random()*15));
+                    val = Math.min(255, (val * 1.28));
                     let color = colormap[Math.floor(val)]; 
                     let px = x * 4; data[px] = color[0]; data[px+1] = color[1]; data[px+2] = color[2]; data[px+3] = 255; 
                 }
@@ -1668,6 +1771,42 @@
             
             document.getElementById('tx-dist').addEventListener('input', e => {
                 document.getElementById('dist-val').innerText = `${e.target.value} km`;
+            });
+
+            document.getElementById('band-profile').addEventListener('change', e => {
+                currentBandProfile = e.target.value;
+                let prof = bandProfiles[currentBandProfile];
+                if(prof){
+                    vfoFreqTarget = prof.center;
+                    updateVFO();
+                    printToConsole(`[SYS] Perfil de banda ajustado a ${currentBandProfile}.`, 'sys');
+                }
+            });
+
+            document.getElementById('btn-ft8-custom').addEventListener('click', () => {
+                const msg = (document.getElementById('ft8-custom-msg').value || '').trim().toUpperCase();
+                if(!msg) return;
+                const normalized = normalizeFT8Message(msg.slice(0,37));
+                if(!normalized) { printToConsole('[FT8] Mensaje inválido. Formato: CQ CALL GRID / CALL CALL -10 / RR73', 'sys'); return; }
+                userFt8CustomMessage = normalized;
+                userFt8State = 'TX_CUSTOM';
+                document.getElementById('ft8-next-msg').innerText = `Auto-TX: CUSTOM`;
+                printToConsole(`[SYS] Mensaje FT8 personalizado en cola: ${userFt8CustomMessage}`, 'sys');
+            });
+
+            document.getElementById('btn-ft8-full').addEventListener('click', () => {
+                tuneTo(7074000, 'USB');
+                filterBw = 3000;
+                document.getElementById('filt-bw').value = filterBw;
+                document.getElementById('sql-level').value = 0;
+                document.getElementById('notch-toggle').checked = false;
+                document.getElementById('notch-freq').disabled = true;
+                updateBwDisplay();
+                applyVFOHardware();
+                updateNotchVisual();
+                const cons = document.getElementById('data-console');
+                cons.innerHTML = '<div class=\"ft8-msg-row ft8-head\"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>';
+                printToConsole('[SYS] MODO FT8 COMPLETO activado: 7.074 MHz USB, SQL abierto, BW 3.0k.', 'sys');
             });
 
             const pttBtn = document.getElementById('btn-ptt');
