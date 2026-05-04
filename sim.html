@@ -728,7 +728,7 @@
             if(!ft8StrictMode) return msg;
             const cq = /^CQ [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
             const grid = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} [A-R]{2}[0-9]{2}$/;
-            const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?[0-2][0-9]$/;
+            const rpt = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} R?-?(0?[1-9]|1[0-9]|2[0-9])$/;
             const rr73 = /^[A-Z0-9/]{3,11} [A-Z0-9/]{3,11} (RR73|73)$/;
             return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
         }
@@ -796,8 +796,8 @@
             return `${A}${B}${Math.floor(Math.random()*10)}${Math.floor(Math.random()*10)}`;
         }
         function genFT8Report() {
-            const value = -1 * (Math.floor(Math.random()*24) + 1);
-            return `${value}`;
+            const value = Math.floor(Math.random()*24) + 1;
+            return `-${String(value).padStart(2, '0')}`;
         }
 
         function populateBotNetworks() {
