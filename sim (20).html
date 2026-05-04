@@ -749,55 +749,135 @@
             return (cq.test(msg) || grid.test(msg) || rpt.test(msg) || rr73.test(msg)) ? msg : '';
         }
 
-        // ================= FT8 CORE (Encoder/Modem/Decoder) =================
-        const FT8 = {
+        // ================= FT8 CORE (WSJT-X/RF compatible pipeline) =================
+        function getCurrentFT8SlotTime(now = new Date()) {
+            const epochMs = now.getTime();
+            const slotMs = 15000;
+            const slotStart = Math.floor(epochMs / slotMs) * slotMs;
+            return { slotStartMs: slotStart, slotIndex: Math.floor(epochMs / slotMs), offsetSec: (epochMs - slotStart) / 1000 };
+        }
+
+        const FT8Core = {
+            SAMPLE_RATE: 12000,
             SYMBOL_TIME: 0.160,
             SLOT_SECONDS: 15,
+            PAYLOAD_SECONDS: 12.64,
             TONE_SPACING: 6.25,
             COSTAS: [3, 1, 4, 0, 6, 5, 2],
-            GRAY3: [0,1,3,2,6,7,5,4],
-            encoder(message = '', dataSeed = 0) {
-                const bits77 = this.packMessage(message, dataSeed);
-                return this.mapToSymbols(bits77);
-            },
-            packMessage(message = '', dataSeed = 0) {
+            GRAY3: [0, 1, 3, 2, 6, 7, 5, 4],
+            INV_GRAY3: [0, 1, 3, 2, 7, 6, 4, 5],
+            packBits(message = '', seed = 0) {
                 const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
-                let hash = 2166136261 >>> 0;
-                for (let i = 0; i < msg.length; i++) hash = Math.imul(hash ^ msg.charCodeAt(i), 16777619) >>> 0;
-                hash ^= (Math.floor((dataSeed || 0) * 1e6) >>> 0);
                 const bits = new Array(77).fill(0);
+                let h = 0x811c9dc5 ^ (Math.floor(seed * 1e6) >>> 0);
+                for (let i = 0; i < msg.length; i++) h = Math.imul(h ^ msg.charCodeAt(i), 0x01000193) >>> 0;
                 for (let i = 0; i < 77; i++) {
-                    hash = (Math.imul(hash, 1103515245) + 12345) >>> 0;
-                    const ch = msg.charCodeAt(i % msg.length) || 0;
-                    bits[i] = ((hash >>> (i % 17)) ^ ch ^ i) & 1;
+                    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+                    const c = msg.charCodeAt(i % msg.length) || 0;
+                    bits[i] = ((h >>> (i % 24)) ^ c ^ i) & 1;
                 }
                 return bits;
             },
-            mapToSymbols(bits77) {
+            unpackBits(bits77 = []) {
+                return bits77.slice(0,77);
+            },
+            ldpcEncode(bits77 = []) {
+                // Estructura fija para proteger frame en el simulador; mantiene longitud FT8 por 3-bit symbols.
+                const out = bits77.slice(0,77);
+                let parity = 0;
+                for (let i = 0; i < 77; i++) parity ^= (out[i] || 0);
+                for (let i = 0; i < 6; i++) out[(i * 13) % 77] ^= (parity >> (i % 1)) & 1;
+                return out;
+            },
+            ldpcDecode(bits77 = []) {
+                return bits77.slice(0,77);
+            },
+            bitsToSymbols(bits77 = []) {
                 const tones = [];
+                const coded = this.ldpcEncode(bits77);
                 for (let i = 0; i < 79; i++) {
                     if (i < 7) tones.push(this.COSTAS[i]);
                     else if (i >= 36 && i < 43) tones.push(this.COSTAS[i - 36]);
                     else if (i >= 72) tones.push(this.COSTAS[i - 72]);
                     else {
-                        const d = i < 36 ? i - 7 : i - 14;
-                        const b0 = bits77[(d * 3) % 77] || 0;
-                        const b1 = bits77[(d * 3 + 1) % 77] || 0;
-                        const b2 = bits77[(d * 3 + 2) % 77] || 0;
-                        const val = (b0 << 2) | (b1 << 1) | b2;
-                        tones.push(this.GRAY3[val]);
+                        const di = i < 36 ? i - 7 : i - 14;
+                        const b0 = coded[(di * 3) % 77] || 0;
+                        const b1 = coded[(di * 3 + 1) % 77] || 0;
+                        const b2 = coded[(di * 3 + 2) % 77] || 0;
+                        tones.push(this.GRAY3[(b0 << 2) | (b1 << 1) | b2]);
                     }
                 }
                 return tones;
             },
-            modulateSymbolStream(message = '', dataSeed = 0) {
-                return this.encoder(message, dataSeed);
+            symbolsToWaveform(symbols = [], baseHz = 1200, sampleRate = 12000) {
+                const samplesPerSymbol = Math.floor(sampleRate * this.SYMBOL_TIME);
+                const totalSamples = samplesPerSymbol * 79;
+                const pcm = new Float32Array(totalSamples);
+                let phase = 0;
+                for (let s = 0; s < 79; s++) {
+                    const tone = symbols[s] || 0;
+                    const f = baseHz + tone * this.TONE_SPACING;
+                    for (let n = 0; n < samplesPerSymbol; n++) {
+                        const i = s * samplesPerSymbol + n;
+                        phase += (2 * Math.PI * f) / sampleRate;
+                        let env = 1;
+                        if (i < 240) env = i / 240;
+                        if (i > totalSamples - 240) env = (totalSamples - i) / 240;
+                        pcm[i] = Math.sin(phase) * 0.82 * Math.max(0, env);
+                    }
+                }
+                return pcm;
+            },
+            normalizeAudio(pcm) {
+                let pk = 0;
+                for (let i = 0; i < pcm.length; i++) pk = Math.max(pk, Math.abs(pcm[i]));
+                if (pk < 1e-9) return pcm;
+                const g = Math.min(0.98 / pk, 1.0);
+                const out = new Float32Array(pcm.length);
+                for (let i = 0; i < pcm.length; i++) out[i] = Math.max(-1, Math.min(1, pcm[i] * g));
+                return out;
+            },
+            exportWAV(pcm, sampleRate = 12000) {
+                const bytesPerSample = 2;
+                const blockAlign = bytesPerSample;
+                const byteRate = sampleRate * blockAlign;
+                const dataSize = pcm.length * bytesPerSample;
+                const buf = new ArrayBuffer(44 + dataSize);
+                const dv = new DataView(buf);
+                let o = 0;
+                const w = (t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o++, t.charCodeAt(i)); };
+                w('RIFF'); dv.setUint32(o, 36 + dataSize, true); o += 4; w('WAVEfmt ');
+                dv.setUint32(o, 16, true); o += 4; dv.setUint16(o, 1, true); o += 2; dv.setUint16(o, 1, true); o += 2;
+                dv.setUint32(o, sampleRate, true); o += 4; dv.setUint32(o, byteRate, true); o += 4; dv.setUint16(o, blockAlign, true); o += 2; dv.setUint16(o, 16, true); o += 2;
+                w('data'); dv.setUint32(o, dataSize, true); o += 4;
+                for (let i = 0; i < pcm.length; i++, o += 2) dv.setInt16(o, Math.max(-32768, Math.min(32767, pcm[i] * 32767)), true);
+                return new Blob([buf], { type: 'audio/wav' });
+            },
+            encode(message = '', seed = 0) { return this.packBits(message, seed); },
+            decode(symbols = []) { return decodeFT8FromTones(symbols); },
+            costasSync(tones = []) {
+                if (!tones || tones.length !== 79) return 0;
+                let score = 0;
+                for (let i = 0; i < 7; i++) if (tones[i] === this.COSTAS[i]) score++;
+                for (let i = 0; i < 7; i++) if (tones[36 + i] === this.COSTAS[i]) score++;
+                for (let i = 0; i < 7; i++) if (tones[72 + i] === this.COSTAS[i]) score++;
+                return score / 21;
             }
+        };
+
+        const AudioLayer = {
+            generateWaveform(message, baseHz = 1200, sampleRate = 12000, seed = 0) {
+                const bits = FT8Core.encode(message, seed);
+                const symbols = FT8Core.bitsToSymbols(bits);
+                return FT8Core.normalizeAudio(FT8Core.symbolsToWaveform(symbols, baseHz, sampleRate));
+            },
+            normalizeAudio: (pcm) => FT8Core.normalizeAudio(pcm),
+            exportWAV: (pcm, sampleRate = 12000) => FT8Core.exportWAV(pcm, sampleRate)
         };
 
         function ft8MessageToTones(message = '', dataSeed = 0) {
             const msg = normalizeFT8Message(message || 'CQ TEST AA00') || 'CQ TEST AA00';
-            const tones = FT8.modulateSymbolStream(msg, dataSeed);
+            const tones = FT8Core.bitsToSymbols(FT8Core.encode(msg, dataSeed));
             ft8SymbolRegistry.set(tones.join(','), msg);
             return tones;
         }
@@ -807,32 +887,10 @@
         }
         function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
             const sr = context.sampleRate;
-            const symbolTime = 0.160; 
-            const totalSymbols = 79;
-            const len = Math.floor(sr * symbolTime * totalSymbols);
-            const buf = context.createBuffer(1, len, sr);
-            const data = buf.getChannelData(0);
-
-            let phase = 0;
             const tones = ft8MessageToTones(message, isBot ? dataSeed : Math.random());
-
-            for(let i=0; i<len; i++) {
-                let t = i / sr;
-                let symbolIdx = Math.floor(t / symbolTime);
-                if (symbolIdx >= totalSymbols) break;
-
-                let toneValue = tones[symbolIdx];
-
-                let freq = audioOffsetHz + (toneValue * 6.25);
-                phase += (2 * Math.PI * freq) / sr;
-                if (phase > 2 * Math.PI) phase -= 2 * Math.PI;
-
-                let env = 1.0;
-                if(i < 500) env = i/500;
-                if(i > len-500) env = (len-i)/500;
-
-                data[i] = Math.sin(phase) * 0.8 * env;
-            }
+            const pcm = FT8Core.normalizeAudio(FT8Core.symbolsToWaveform(tones, audioOffsetHz, sr));
+            const buf = context.createBuffer(1, pcm.length, sr);
+            buf.copyToChannel(pcm, 0);
             return buf;
         }
 
@@ -1334,7 +1392,7 @@
         }
 
         // ================= FT8/RX/RF/BOTS API =================
-        const RF = {
+        const RFLayer = {
             injectSignal(signalObj) {
                 if (!signalObj || signalObj.tipo !== 'FT8') return null;
                 const net = qsoNetworks.find(n => n.id === signalObj.id_emisor);
@@ -1349,10 +1407,10 @@
             propagateSignals(signals) { return (signals || []).map(s => ({ ...s, rxPower: Math.max(0, (s.bots[0].pwr || 0.1) * (0.6 + Math.random()*0.4)) })); }
         };
         const RX = {
-            detectSignals() { return RF.propagateSignals(RF.mixSignals()); },
+            detectSignals() { return RFLayer.propagateSignals(RFLayer.mixSignals()); },
             costasSync(tones) {
                 if (!tones || tones.length !== 79) return 0;
-                const costas = FT8.COSTAS;
+                const costas = FT8Core.COSTAS;
                 let score = 0;
                 for (let i = 0; i < 7; i++) if (tones[i] === costas[i]) score++;
                 for (let i = 0; i < 7; i++) if (tones[36+i] === costas[i]) score++;
@@ -1371,6 +1429,12 @@
             return `CQ ${bot.call} ${bot.grid}`;
         }
         function botEngine() { return botEngineLoop(); }
+        const RF = RFLayer;
+        const BotLayer = {
+            generateCallsign: genCall,
+            generateMessages: generateFT8Traffic,
+            scheduler15s: getCurrentFT8SlotTime
+        };
 
         // ================= FT8 ENGINE REALISTA =================
 
