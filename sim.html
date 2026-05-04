@@ -782,15 +782,22 @@
         }
 
         function genCall() {
-            const p = ['W','K','N','EA','LU','PY','JA','VK','G','F','DL','I','XE','CE'];
-            const n = Math.floor(Math.random()*10);
-            const s = String.fromCharCode(65+Math.random()*26, 65+Math.random()*26) + (Math.random()>0.5 ? String.fromCharCode(65+Math.random()*26) : '');
-            return p[Math.floor(Math.random()*p.length)] + n + s;
+            const prefixes = ['K','N','W','AA','AB','AC','AD','AE','AF','AG','EA','F','DL','I','JA','VK','PY','LU'];
+            const prefix = prefixes[Math.floor(Math.random()*prefixes.length)];
+            const digit = Math.floor(Math.random()*10);
+            const sufLen = Math.random() > 0.35 ? 3 : 2;
+            let suffix = '';
+            for(let i=0;i<sufLen;i++) suffix += String.fromCharCode(65 + Math.floor(Math.random()*26));
+            return `${prefix}${digit}${suffix}`;
         }
         function genGrid() {
-            const a = ['I','J','E','F','G','H'];
-            const b = ['M','N','O','P','Q','R'];
-            return a[Math.floor(Math.random()*a.length)] + b[Math.floor(Math.random()*b.length)] + Math.floor(Math.random()*10) + Math.floor(Math.random()*10);
+            const A = String.fromCharCode(65 + Math.floor(Math.random()*18));
+            const B = String.fromCharCode(65 + Math.floor(Math.random()*18));
+            return `${A}${B}${Math.floor(Math.random()*10)}${Math.floor(Math.random()*10)}`;
+        }
+        function genFT8Report() {
+            const value = -1 * (Math.floor(Math.random()*24) + 1);
+            return `${value}`;
         }
 
         function populateBotNetworks() {
@@ -1149,7 +1156,7 @@
                             bot.ft8State = 'REPORT';
                             net.currentMessage = `${bot.ft8Target} ${bot.call} ${bot.grid}`;
                         } else if (bot.ft8State === 'REPORT') {
-                            net.currentMessage = `${bot.ft8Target} ${bot.call} -${Math.floor(Math.random()*15)+5}`;
+                            net.currentMessage = `${bot.ft8Target} ${bot.call} ${genFT8Report()}`;
                             bot.ft8State = 'RR73';
                         } else if (bot.ft8State === 'RR73') {
                             net.currentMessage = `${bot.ft8Target} ${bot.call} RR73`;
@@ -1159,6 +1166,7 @@
                             bot.ft8State = 'CQ';
                         }
 
+                        net.currentMessage = normalizeFT8Message(net.currentMessage) || `CQ ${bot.call} ${bot.grid}`;
                         bot.lastMsg = net.currentMessage;
                         if(net.activeNodes && net.activeNodes.audio) {
                             try { net.activeNodes.audio.stop(); } catch(e) {}
