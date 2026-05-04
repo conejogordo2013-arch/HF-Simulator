@@ -498,8 +498,8 @@
         const IF_CENTER = 15000; 
         const IF_BANDWIDTH = 12000; 
         
-        let vfoFreqTarget = 7150000; 
-        let vfoFreqActual = 7150000; 
+        let vfoFreqTarget = 7074000; 
+        let vfoFreqActual = 7074000; 
         let currentMode = 'LSB';
         let filterBw = 2700; 
         let isTransmitting = false;
@@ -560,7 +560,7 @@
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
             '80m': {center:3700000, qrn:1.2, fade:0.35},
-            '40m': {center:7150000, qrn:1.0, fade:0.22},
+            '40m': {center:7074000, qrn:1.0, fade:0.22},
             '20m': {center:14074000, qrn:0.65, fade:0.15},
             '10m': {center:28400000, qrn:0.35, fade:0.08}
         };
@@ -1279,7 +1279,7 @@
         // ================= FT8 ENGINE REALISTA =================
 
         function processFT8Decodes(utc) {
-            if(currentMode !== 'USB') return; 
+            if(currentMode !== 'USB') return;
             
             const decodeTs = new Date(utc.getTime() - 13000);
             const timeStr = `${String(decodeTs.getUTCHours()).padStart(2,'0')}${String(decodeTs.getUTCMinutes()).padStart(2,'0')}${String(decodeTs.getUTCSeconds()).padStart(2,'0')}`;
@@ -1289,7 +1289,7 @@
                 if(net.type !== 'FT8' || net.state !== 'TX' || !net.currentMessage) return;
                 
                 let df = net.freq - vfoFreqActual;
-                if(df > -150 && df < 3200) { 
+                if(df > -3000 && df < 3000) { 
                     // Calcular SNR basado en la atenuación
                     let baseGain = calculatePathLoss(net.freq, targetDistanceKm, 100, userAntGain); 
                     let snr = Math.floor((baseGain * 60) - 120 + 75); // Normalización para mostrar ~ -24 a +10
@@ -1305,6 +1305,9 @@
             });
 
             decodes.sort((a,b) => a.freq - b.freq);
+            if(decodes.length === 0) {
+                printToConsole('[FT8] Sin decodificaciones: ajusta a 7.074 o 14.074 MHz USB y espera fin de slot 15s.', 'sys');
+            }
             
             if(decodes.length === 0 && ft8StrictMode) { printToConsole('[FT8] Decoder: sin tramas válidas en este ciclo.', 'sys'); }
             decodes.forEach(d => {
