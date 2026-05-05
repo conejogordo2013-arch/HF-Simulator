@@ -863,21 +863,20 @@
                 }
                 return tones;
             },
-            symbolsToWaveform(symbols = [], baseHz = 1200, sampleRate = 12000) {
-                const samplesPerSymbol = Math.floor(sampleRate * this.SYMBOL_TIME);
+            symbolsToWaveform(symbols = [], baseHz = 1500, sampleRate = 12000) {
+                const samplesPerSymbol = Math.round(sampleRate * this.SYMBOL_TIME); // 1920 @ 12 kHz
                 const totalSamples = samplesPerSymbol * 79;
                 const pcm = new Float32Array(totalSamples);
                 let phase = 0;
-                for (let s = 0; s < 79; s++) {
-                    const tone = symbols[s] || 0;
-                    const f = baseHz + tone * this.TONE_SPACING;
+                for (let sym = 0; sym < 79; sym++) {
+                    const tone = (symbols[sym] || 0) & 7;
+                    const f = baseHz + (tone * this.TONE_SPACING);
+                    const dphi = (2 * Math.PI * f) / sampleRate;
                     for (let n = 0; n < samplesPerSymbol; n++) {
-                        const i = s * samplesPerSymbol + n;
-                        phase += (2 * Math.PI * f) / sampleRate;
-                        let env = 1;
-                        if (i < 240) env = i / 240;
-                        if (i > totalSamples - 240) env = (totalSamples - i) / 240;
-                        pcm[i] = Math.sin(phase) * 0.82 * Math.max(0, env);
+                        const i = sym * samplesPerSymbol + n;
+                        phase += dphi;
+                        if (phase > 2 * Math.PI) phase -= 2 * Math.PI;
+                        pcm[i] = Math.sin(phase) * 0.86;
                     }
                 }
                 return pcm;
@@ -933,7 +932,7 @@
         };
 
         const AudioLayer = {
-            generateWaveform(message, baseHz = 1200, sampleRate = 12000, seed = 0) {
+            generateWaveform(message, baseHz = 1500, sampleRate = 12000, seed = 0) {
                 const bits = FT8Core.encode(message, seed);
                 const symbols = FT8Core.bitsToSymbols(bits);
                 return FT8Core.normalizeAudio(FT8Core.symbolsToWaveform(symbols, baseHz, sampleRate));
@@ -949,13 +948,23 @@
         function decodeFT8FromTones(tones) {
             return FT8Core.decode(tones);
         }
-        function generateFT8Buffer(context, audioOffsetHz, isBot = false, dataSeed = 0, message = '') {
+        function generateFT8Buffer(context, audioOffsetHz = 1500, isBot = false, dataSeed = 0, message = '') {
             const sr = context.sampleRate;
             const tones = ft8MessageToTones(message, dataSeed);
             const pcm = FT8Core.normalizeAudio(FT8Core.symbolsToWaveform(tones, audioOffsetHz, sr));
             const buf = context.createBuffer(1, pcm.length, sr);
             buf.copyToChannel(pcm, 0);
             return buf;
+        }
+
+
+        function validateFT8Waveform(message = 'CQ TEST AA00', baseHz = 1500, sampleRate = 12000) {
+            const tones = ft8MessageToTones(message, 0);
+            const pcm = FT8Core.normalizeAudio(FT8Core.symbolsToWaveform(tones, baseHz, sampleRate));
+            const decoded = decodeFT8FromTones(tones);
+            const ok = !!decoded && tones.length === 79 && pcm.length === Math.round(sampleRate * FT8Core.SYMBOL_TIME) * 79;
+            if(ft8StrictMode) printToConsole(`[FT8][Validate] tones=${tones.length} samples=${pcm.length} decoded="${decoded}" status=${ok ? 'OK' : 'FAIL'}`, ok ? 'sys' : 'sys');
+            return { ok, tones, pcm, decoded };
         }
 
         function genCall() {
