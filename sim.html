@@ -344,6 +344,7 @@
                             <div class="ft8-msg-row ft8-head"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>
                             <div class="ft8-sys-line">[SYS] Iniciando decodificador WSJT-X integrado...</div>
                             <div class="ft8-sys-line">[SYS] Click en un mensaje CQ para responder.</div>
+                            <div class="ft8-sys-line">[SYS] Decodificación simulada (no real). Para decodificación real usar WSJT-X.</div>
                         </div>
                     </div>
                 </div>
@@ -564,6 +565,7 @@
         let ft8LastPresenceCheckMs = 0;
         let ft8PresenceCached = false;
         let ft8PresenceHoldSlots = 0;
+        let ft8StationSimMap = new Map();
         const bandProfiles = {
             '160m': {center:1900000, qrn:1.6, fade:0.55},
             '80m': {center:3700000, qrn:1.2, fade:0.35},
@@ -1597,6 +1599,20 @@
 
         // ================= FT8 ENGINE REALISTA =================
 
+        function simulateFT8DecodeMessage(net) {
+            const key = `${Math.round(net.freq)}:${Math.round((net.basebandOffset || 1500) / 10)}`;
+            if(!ft8StationSimMap.has(key)) {
+                ft8StationSimMap.set(key, { call: net.bots?.[0]?.call || genCall(), grid: net.bots?.[0]?.grid || genGrid() });
+            }
+            const st = ft8StationSimMap.get(key);
+            const snrDb = Math.max(-22, Math.min(-3, Math.round(-22 + ((net.bots?.[0]?.pwr || 0.3) * 20))));
+            const report = `${snrDb}`;
+            const mode = Math.random();
+            if(mode < 0.34) return `CQ ${st.call} ${st.grid}`;
+            if(mode < 0.68) return `${myCallsign} ${st.call} ${report}`;
+            return `${myCallsign} ${st.call} ${Math.random() > 0.5 ? 'RR73' : '73'}`;
+        }
+
         function processFT8Decodes(utc) {
             const decodeTs = new Date(utc.getTime() - 13000);
             const timeStr = `${String(decodeTs.getUTCHours()).padStart(2,'0')}${String(decodeTs.getUTCMinutes()).padStart(2,'0')}${String(decodeTs.getUTCSeconds()).padStart(2,'0')}`;
@@ -1612,7 +1628,7 @@
                     let snr = Math.floor((baseGain * 60) - 120 + 75); // Normalización para mostrar ~ -24 a +10
                     
                     if(snr >= -24) { 
-                        let decodedMsg = (net.lastTones && net.lastTones.length === 79) ? (decodeFT8FromTones(net.lastTones) || net.currentMessage) : net.currentMessage;
+                        let decodedMsg = simulateFT8DecodeMessage(net);
                         decodes.push({
                             time: timeStr, snr: snr, dt: (Math.random()*0.8 - 0.4).toFixed(1),
                             freq: Math.floor(net.basebandOffset), msg: decodedMsg, 
