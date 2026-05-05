@@ -342,7 +342,7 @@
                         </div>
                         <div class="ft8-console" id="data-console">
                             <div class="ft8-msg-row ft8-head"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>
-                            <div class="ft8-sys-line">[SYS] Iniciando decodificador WSJT-X integrado...</div>
+                            <div class="ft8-sys-line">[SYS] RX FT8 simulado activo; TX genera audio FT8 exportable.</div>
                             <div class="ft8-sys-line">[SYS] Click en un mensaje CQ para responder.</div>
                             <div class="ft8-sys-line">[SYS] Decodificación simulada (no real). Para decodificación real usar WSJT-X.</div>
                         </div>
@@ -546,7 +546,7 @@
         let userTxPower = 100;
         let userAntGain = 2.15;
         let targetDistanceKm = 5000;
-        let atmos = { sfi: 120, kp: 2, night: false, storm: 0.1 };
+        let atmos = { sfi: 120, kp: 2, night: false, storm: 0.1, qrn: 0.4, qrm: 0.2, mufMHz: 18, absorption: 0.15, lightning: 0.1 };
 
         // === VARIABLES ESTADO FT8 REAL ===
         let ft8CycleTime = 0;
@@ -626,12 +626,19 @@
             const now = new Date();
             const hour = now.getUTCHours();
             const night = (hour < 5 || hour > 18);
+            const grayline = (hour >= 4 && hour <= 7) || (hour >= 17 && hour <= 20);
             const dayFactor = night ? 0.7 : 1.0;
+            const slow = now.getTime();
             atmos.night = night;
-            atmos.sfi = Math.floor(95 + (Math.sin(now.getTime()/7200000) + 1) * 35 * dayFactor);
-            atmos.kp = Math.max(1, Math.min(7, Math.floor(1 + (Math.cos(now.getTime()/1800000) + 1) * 2.6)));
+            atmos.sfi = Math.floor(95 + (Math.sin(slow/7200000) + 1) * 35 * dayFactor);
+            atmos.kp = Math.max(1, Math.min(7, Math.floor(1 + (Math.cos(slow/1800000) + 1) * 2.6)));
             atmos.storm = Math.max(0, (atmos.kp - 3) / 6);
-            document.getElementById('atm-status').innerText = `SFI ${atmos.sfi} | Kp ${atmos.kp} | ${night ? 'Noche' : 'Día'}`;
+            atmos.mufMHz = Math.max(5, Math.min(32, 8 + (atmos.sfi * 0.13) - (atmos.kp * 0.9) + (grayline ? 4 : 0) + (night ? -3 : 2)));
+            atmos.absorption = Math.max(0.02, Math.min(1, (atmos.kp * 0.09) + (night ? 0.05 : 0.18)));
+            atmos.qrn = Math.max(0.05, Math.min(2.4, (night ? 0.9 : 0.45) + atmos.storm + Math.sin(slow/900000) * 0.18));
+            atmos.qrm = Math.max(0.02, Math.min(1.8, 0.16 + (qsoNetworks.filter(n => Math.abs(n.freq - vfoFreqActual) < IF_BANDWIDTH && n.state === 'TX').length * 0.07)));
+            atmos.lightning = Math.max(0.02, Math.min(1.8, atmos.qrn * (0.35 + atmos.storm)));
+            document.getElementById('atm-status').innerText = `SFI ${atmos.sfi} | Kp ${atmos.kp} | MUF ${atmos.mufMHz.toFixed(1)}MHz | QRN ${atmos.qrn.toFixed(1)}`;
         }
 
         function printToConsole(text, type='sys') {
@@ -987,40 +994,90 @@
             const value = Math.floor(Math.random()*24) + 1;
             return `-${String(value).padStart(2, '0')}`;
         }
+        function genPirateCall() {
+            const names = ['PIRATE', 'FREEBAND', 'BUZZSAW', 'DRIFT', 'TUNER', 'QRM', 'FISHER'];
+            return `${names[Math.floor(Math.random()*names.length)]}-${Math.floor(10 + Math.random()*89)}`;
+        }
+        function genCwQsoMessage(net) {
+            const b1 = net.bots[net.activeBotIdx]?.call || genCall();
+            const b2 = net.bots[(net.activeBotIdx + 1) % net.bots.length]?.call || myCallsign;
+            if(net.pirate) {
+                const pirateMsgs = [`CQ CQ DE ${b1} ${b1} K`, `VVV TEST DE ${b1} K`, `QRL? QRL? DE ${b1}`, `${b2} DE ${b1} QRM HR 73`];
+                return pirateMsgs[Math.floor(Math.random()*pirateMsgs.length)];
+            }
+            const rst = Math.random() > 0.22 ? '599' : `${Math.floor(3 + Math.random()*3)}${Math.floor(4 + Math.random()*5)}9`;
+            const templates = [
+                `CQ CQ DE ${b1} ${b1} K`,
+                `${b2} DE ${b1} UR ${rst} NAME BOT QTH ${genGrid()} K`,
+                `${b2} DE ${b1} RST ${rst} PWR ${Math.floor(20 + Math.random()*80)}W ANT DIPOLE K`,
+                `${b2} DE ${b1} TU 73 SK`
+            ];
+            return templates[Math.floor(Math.random()*templates.length)];
+        }
+        function genSsbPirateMessage() {
+            const msgs = ['Numbers station marker', 'Overmodulated pescador QRM', 'Freeband USB chatter', 'Tuning carrier sweep', 'Pirate broadcast fragment'];
+            return msgs[Math.floor(Math.random()*msgs.length)];
+        }
 
         function populateBotNetworks() {
-            // CW y SSB Redes
-            for(let i=0; i<15; i++) {
+            // CW realista: más estaciones, concursos, DX y QRP distribuidos por bandas HF.
+            const cwBands = [
+                [1810000, 1840000], [3500000, 3570000], [7000000, 7040000], [10100000, 10130000],
+                [14000000, 14070000], [18068000, 18095000], [21000000, 21070000], [28000000, 28070000]
+            ];
+            for(let i=0; i<48; i++) {
+                const band = cwBands[i % cwBands.length];
                 qsoNetworks.push({
-                    id: 'net_cw_'+i, freq: 3500000 + Math.random()*11000000, type: 'CW_QSO', mode: 'CW',
-                    bots: [ {call: genCall(), pwr: 0.8}, {call: genCall(), pwr: 0.4} ],
-                    state: 'IDLE', timer: Math.random()*10, activeBotIdx: 0, wpm: 12 + Math.random()*18,
-                    fadingRates: [0.1+Math.random()*0.2, 0.5], fadingPhases: [Math.random()*Math.PI, 0], activeNodes: null
+                    id: 'net_cw_'+i, freq: band[0] + Math.random()*(band[1]-band[0]), type: 'CW_QSO', mode: 'CW',
+                    bots: [ {call: genCall(), pwr: 0.15 + Math.random()*0.85}, {call: genCall(), pwr: 0.08 + Math.random()*0.7} ],
+                    state: 'IDLE', timer: Math.random()*18, activeBotIdx: 0, wpm: 10 + Math.random()*26,
+                    fadingRates: [0.06+Math.random()*0.34, 0.12+Math.random()*0.7], fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI],
+                    activeNodes: null, cwMsg: '', qsoStep: 0, pirate: false
+                });
+            }
+
+            // Piratas/interferentes: carriers, CW torpe y SSB fuera de plan que pueden pisar la señal del usuario.
+            for(let i=0; i<14; i++) {
+                const freq = 6800000 + Math.random()*7800000;
+                qsoNetworks.push({
+                    id: 'net_pirate_cw_'+i, freq, type: 'CW_QSO', mode: 'CW', pirate: true,
+                    bots: [ {call: genPirateCall(), pwr: 0.35 + Math.random()*1.2}, {call: genPirateCall(), pwr: 0.2 + Math.random()*0.8} ],
+                    state: 'IDLE', timer: Math.random()*25, activeBotIdx: 0, wpm: 6 + Math.random()*20,
+                    fadingRates: [0.15+Math.random()*0.6, 0.3+Math.random()*1.1], fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI],
+                    activeNodes: null, cwMsg: '', qsoStep: 0
                 });
             }
 
             const ssbRanges = [ [3600000, 3800000, 'LSB'], [7100000, 7200000, 'LSB'], [14150000, 14300000, 'USB'], [28300000, 28500000, 'USB'] ];
             ssbRanges.forEach(band => {
-                for(let i=0; i<10; i++) {
+                for(let i=0; i<12; i++) {
                     let bots = []; let numBots = Math.random()>0.8 ? 3 : 2;
                     for(let b=0; b<numBots; b++) bots.push({call: genCall(), pwr: 0.3 + Math.random()*0.7});
                     qsoNetworks.push({
                         id: 'net_ssb_'+Math.random(), freq: band[0] + Math.random()*(band[1]-band[0]), type: 'SSB_QSO', mode: band[2],
                         bots: bots, state: 'IDLE', timer: Math.random()*15, activeBotIdx: 0,
                         fadingRates: [0.05+Math.random()*0.2, 0.2+Math.random()*0.4], fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI],
-                        activeNodes: null
+                        activeNodes: null, pirate: false
                     });
                 }
             });
+            for(let i=0; i<10; i++) {
+                qsoNetworks.push({
+                    id: 'net_pirate_ssb_'+i, freq: 6900000 + Math.random()*7600000, type: 'SSB_QSO', mode: Math.random()>0.5?'USB':'LSB', pirate: true,
+                    bots: [ {call: genPirateCall(), pwr: 0.5 + Math.random()*1.4, note: genSsbPirateMessage()} ],
+                    state: 'IDLE', timer: Math.random()*20, activeBotIdx: 0,
+                    fadingRates: [0.08+Math.random()*0.35, 0.25+Math.random()*0.8], fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI], activeNodes: null
+                });
+            }
 
             // FT8 Bots on 20m (14.074 MHz) y 40m (7.074 MHz)
-            const ft8Freqs = [14074000, 14074000, 14074000, 7074000, 7074000];
-            for(let i=0; i<60; i++) {
+            const ft8Freqs = [14074000, 14074000, 14074000, 7074000, 7074000, 10136000, 21074000];
+            for(let i=0; i<72; i++) {
                 let offset = 300 + Math.random()*2200; 
                 let bfreq = ft8Freqs[i % ft8Freqs.length];
                 qsoNetworks.push({
                     id: 'net_ft8_'+i, freq: bfreq, type: 'FT8', mode: 'USB', basebandOffset: offset,
-                    bots: [ {call: genCall(), grid: genGrid(), pwr: 0.2 + Math.random()*0.8, seed: Math.random(), ft8State: 'CQ', ft8Target: '', lastMsg:''} ], 
+                    bots: [ {call: genCall(), grid: genGrid(), pwr: 0.12 + Math.random()*0.95, seed: Math.random(), ft8State: 'CQ', ft8Target: '', lastMsg:''} ], 
                     state: 'IDLE', timer: 0, activeBotIdx: 0,
                     fadingRates: [0.05, 0.1], fadingPhases: [Math.random()*Math.PI, 0], activeNodes: null,
                     currentMessage: ''
@@ -1174,7 +1231,9 @@
             const mufBonus = Math.max(-8, Math.min(8, (atmos.sfi - 110) * 0.08));
             const stormLoss = atmos.kp * 1.35;
             const nightLoss = atmos.night ? (freqMHz > 12 ? 4.5 : -2.0) : 0;
-            fspl += stormLoss + nightLoss - mufBonus;
+            const mufLoss = freqMHz > atmos.mufMHz ? (freqMHz - atmos.mufMHz) * 1.8 : 0;
+            const absorptionLoss = atmos.absorption * (freqMHz < 8 ? 3.5 : 1.2);
+            fspl += stormLoss + nightLoss + mufLoss + absorptionLoss - mufBonus;
             let pwrDBm = 10 * Math.log10(txPowW * 1000);
             let rxPwrDBm = pwrDBm + antGainDBi - fspl;
             
@@ -1380,7 +1439,7 @@
             }
 
             let antFactor = 1 + (userAntGain / 15);
-            let bandNoiseLevel = (0.8 - (vfoFreqActual / MAX_FREQ) * 0.6) * antFactor;
+            let bandNoiseLevel = (0.8 - (vfoFreqActual / MAX_FREQ) * 0.6) * antFactor * (0.75 + atmos.qrn * 0.35 + atmos.qrm * 0.22);
             if(noiseGainNode) noiseGainNode.gain.setTargetAtTime(bandNoiseLevel, now, 0.5);
 
             // FT8 SEQUENCER REAL
@@ -1470,11 +1529,10 @@
                     net.timer -= 0.05;
                     if(net.timer <= 0) {
                         if(net.state === 'IDLE' || net.state === 'PAUSE') {
-                            net.state = 'TX'; net.timer = 5 + Math.random() * 15; 
+                            net.state = 'TX'; net.timer = net.pirate ? (1.5 + Math.random() * 7) : (5 + Math.random() * 15); 
                             net.activeBotIdx = (net.activeBotIdx + 1) % net.bots.length; 
                             if(net.type === 'CW_QSO') {
-                                let b1 = net.bots[net.activeBotIdx].call; let b2 = net.bots[(net.activeBotIdx+1)%net.bots.length].call;
-                                net.cwMsg = `${b2} DE ${b1} UR 599 K`; net.cwIdx = 0; net.cwTime = now;
+                                net.cwMsg = genCwQsoMessage(net); net.cwIdx = 0; net.cwTime = now;
                             }
                         } else if (net.state === 'TX') {
                             net.state = 'PAUSE'; net.timer = 1 + Math.random() * 3; 
@@ -1700,6 +1758,34 @@
             }
         }
 
+        function triggerUserSignalInterference(kind = 'TX') {
+            if(!actx || Math.random() > 0.38) return;
+            const candidates = qsoNetworks.filter(n => (n.type === 'CW_QSO' || n.type === 'SSB_QSO') && n.pirate);
+            const qrm = candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : null;
+            if(!qrm) return;
+            qrm.freq = vfoFreqActual + (Math.random()*1200 - 600);
+            qrm.state = 'TX';
+            qrm.timer = 2.0 + Math.random()*5.5;
+            qrm.activeBotIdx = 0;
+            if(qrm.type === 'CW_QSO') { qrm.cwMsg = `QRL? DE ${qrm.bots[0].call} K`; qrm.cwIdx = 0; qrm.cwTime = actx.currentTime + 0.15; }
+            applyVFOHardware();
+            printToConsole(`[QRM] Interferencia de bot/pirata sobre tu ${kind}: ${qrm.bots[0].call}`, 'sys');
+        }
+
+        function queueFt8BotResponseToUser(message, audioFreq) {
+            const heardCQ = /^CQ\s+/.test(message);
+            const target = qsoNetworks.find(n => n.type === 'FT8' && Math.abs(n.freq - vfoFreqActual) < 2500 && Math.abs((n.basebandOffset || 1500) - audioFreq) < 450)
+                || qsoNetworks.find(n => n.type === 'FT8' && Math.abs(n.freq - vfoFreqActual) < 2500);
+            if(!target || !target.bots?.[0]) return;
+            const bot = target.bots[0];
+            bot.ft8Target = myCallsign;
+            if(heardCQ) bot.ft8State = 'REPORT';
+            else if(message.includes('RR73') || message.endsWith(' 73')) bot.ft8State = 'CQ';
+            else bot.ft8State = Math.random() > 0.5 ? 'RR73' : 'REPORT';
+            target.basebandOffset = audioFreq + (Math.random()*80 - 40);
+            printToConsole(`[FT8] ${bot.call} te escuchó; respuesta simulada en próximo slot.`, 'sys');
+        }
+
         const setGlobalTX = (state) => {
             isTransmitting = state;
             if(state) {
@@ -1712,6 +1798,7 @@
                 
                 let monVol = document.getElementById('mon-level').value / 100;
                 if(txMonitorGain) txMonitorGain.gain.setTargetAtTime(monVol, actx.currentTime, 0.05);
+                triggerUserSignalInterference(currentMode || 'TX');
             } else {
                 document.getElementById('ind-tx').classList.remove('active'); document.getElementById('ind-rx').classList.add('active');
                 if(txMasterGain) txMasterGain.gain.setTargetAtTime(0, actx.currentTime, 0.01); 
@@ -1741,6 +1828,7 @@
                 <span>${timeStr}</span><span>Tx</span><span>0.0</span><span>${Math.floor(ft8BasebandOffsetTx)}</span><span>${userFt8TxMessage}</span>
             </div>`;
             printToConsole(row, 'tx');
+            queueFt8BotResponseToUser(userFt8TxMessage, ft8BasebandOffsetTx);
             
             setGlobalTX(true);
             ft8Src.start();
@@ -1765,16 +1853,23 @@
                 if(word.length > 0) {
                     printToConsole(`[TX CW] Decoded: ${word}`, 'sys');
                     
-                    let activeNets = qsoNetworks.filter(n => n.type === 'CW_QSO' && Math.abs(n.freq - vfoFreqActual) < 1000);
+                    let activeNets = qsoNetworks.filter(n => n.type === 'CW_QSO' && Math.abs(n.freq - vfoFreqActual) < 2500)
+                                                .sort((a,b) => Math.abs(a.freq - vfoFreqActual) - Math.abs(b.freq - vfoFreqActual));
+                    if(activeNets.length === 0) {
+                        activeNets = qsoNetworks.filter(n => n.type === 'CW_QSO' && !n.pirate).slice(0, 1);
+                        if(activeNets[0]) activeNets[0].freq = vfoFreqActual + (Math.random()*900 - 450);
+                    }
                     if(activeNets.length > 0) {
                         let targetNet = activeNets[0];
                         let botCall = targetNet.bots[targetNet.activeBotIdx].call;
                         
-                        if(word.includes("CQ") || word.includes(botCall)) {
+                        if(word.includes("CQ") || word.includes(botCall) || word.includes("DE")) {
                             targetNet.state = 'TX';
-                            targetNet.cwMsg = `${myCallsign} DE ${botCall} UR 599 TU`;
+                            targetNet.timer = 8;
+                            targetNet.cwMsg = `${myCallsign} DE ${botCall} UR ${targetNet.pirate ? 'QRM' : '599'} TU 73`;
                             targetNet.cwIdx = 0;
                             targetNet.cwTime = actx.currentTime + 1.0;
+                            applyVFOHardware();
                             printToConsole(`[SYS] Respuesta CW detectada de ${botCall}...`, 'sys');
                         }
                     }
@@ -1890,6 +1985,7 @@
             sortedNets.forEach(net => {
                 if(count >= 4) return;
                 let isTx = net.state === 'TX'; let desc = isTx ? `TX: ${net.bots[net.activeBotIdx].call}` : 'QRT / Escuchando';
+                if(net.pirate) desc = isTx ? `QRM/Pirata: ${net.bots[net.activeBotIdx].call}` : 'Pirata al acecho';
                 if(net.type === 'RTTY') desc = 'FSK Data 45bd'; 
                 else if(net.type === 'AM_BROADCAST') desc = 'Broadcasting';
                 else if(net.type === 'FT8') desc = isTx ? `FT8 Seq Activo` : `FT8 Slot IDLE`;
@@ -2137,6 +2233,7 @@
                 const cons = document.getElementById('data-console');
                 cons.innerHTML = '<div class=\"ft8-msg-row ft8-head\"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>';
                 printToConsole('[SYS] FT8 Mode activado: 7.074 MHz USB, SQL abierto, BW 3.0k.', 'sys');
+                printToConsole('[SYS] Decodificación simulada (no real). Para decodificación real usar WSJT-X.', 'sys');
             });
 
             const pttBtn = document.getElementById('btn-ptt');
