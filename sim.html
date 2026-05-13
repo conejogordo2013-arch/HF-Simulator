@@ -273,6 +273,10 @@
         .ft8-tx-line { color: #ef4444; text-shadow: 0 0 4px rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.05); }
         .ft8-rx-line { color: #f59e0b; text-shadow: 0 0 4px rgba(245, 158, 11, 0.5); }
         .ft8-sys-line { color: #94a3b8; font-style: italic; border-bottom: 1px dotted #1e293b;}
+        .morse-tool { display: grid; grid-template-columns: 1fr; gap: 5px; padding: 6px; border: 1px solid #1e293b; border-radius: 4px; background: rgba(15, 23, 42, 0.65); }
+        .morse-tool textarea { width: 100%; min-height: 38px; resize: vertical; background: #020617; color: #dbeafe; border: 1px solid #334155; border-radius: 4px; padding: 6px; font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; }
+        .morse-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+        .morse-output { min-height: 28px; max-height: 66px; overflow-y: auto; background: #000; color: #fbbf24; border: 1px inset #334155; border-radius: 4px; padding: 6px; font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; white-space: pre-wrap; word-break: break-word; text-shadow: 0 0 4px rgba(251, 191, 36, 0.45); }
 
     </style>
 </head>
@@ -339,6 +343,15 @@
                         <div style="display:grid; grid-template-columns: 1fr auto; gap:6px;">
                             <input id="ft8-custom-msg" maxlength="37" placeholder="CQ IA1SDR IM55 o CALL IA1SDR -10" style="background:#0b1020; color:#e2e8f0; border:1px solid #334155; border-radius:4px; padding:6px; font-family: 'Share Tech Mono', monospace;">
                             <button class="btn-sm" id="btn-ft8-custom" style="padding:6px 10px;">TX MSG</button>
+                        </div>
+                        <div class="morse-tool" aria-label="Codificador y decodificador Morse">
+                            <textarea id="morse-input" placeholder="Morse: CQ DE IA1SDR / -.-. --.-  -.. .  .. .- .---- ... -.. .-."></textarea>
+                            <div class="morse-actions">
+                                <button class="btn-sm" id="btn-morse-encode" style="padding:6px 4px;">CODIFICAR</button>
+                                <button class="btn-sm" id="btn-morse-decode" style="padding:6px 4px;">DECODIFICAR</button>
+                                <button class="btn-sm" id="btn-morse-clear" style="padding:6px 4px;">LIMPIAR</button>
+                            </div>
+                            <div class="morse-output" id="morse-output">MORSE READY</div>
                         </div>
                         <div class="ft8-console" id="data-console">
                             <div class="ft8-msg-row ft8-head"><span>UTC</span><span>SNR</span><span>dT</span><span>Hz</span><span>Mensaje FT8</span></div>
@@ -534,8 +547,61 @@
         let tempCanvas = document.createElement('canvas'); let tempCtx = tempCanvas.getContext('2d', { alpha: false });
         let localSpectrumData; let colormap = []; 
 
-        const morseDict = { 'A':'.-', 'B':'-...', 'C':'-.-.', 'D':'-..', 'E':'.', 'F':'..-.', 'G':'--.', 'H':'....', 'I':'..', 'J':'.---', 'K':'-.-', 'L':'.-..', 'M':'--', 'N':'-.', 'O':'---', 'P':'.--.', 'Q':'--.-', 'R':'.-.', 'S':'...', 'T':'-', 'U':'..-', 'V':'...-', 'W':'.--', 'X':'-..-', 'Y':'-.--', 'Z':'--..', '0':'-----', '1':'.----', '2':'..---', '3':'...--', '4':'....-', '5':'.....', '6':'-....', '7':'--...', '8':'---..', '9':'----.', ' ':' ', '?':'..--..', '/':'-..-.' };
+        const morseDict = {
+            'A':'.-', 'B':'-...', 'C':'-.-.', 'D':'-..', 'E':'.', 'F':'..-.', 'G':'--.', 'H':'....', 'I':'..', 'J':'.---',
+            'K':'-.-', 'L':'.-..', 'M':'--', 'N':'-.', 'O':'---', 'P':'.--.', 'Q':'--.-', 'R':'.-.', 'S':'...', 'T':'-',
+            'U':'..-', 'V':'...-', 'W':'.--', 'X':'-..-', 'Y':'-.--', 'Z':'--..', '0':'-----', '1':'.----', '2':'..---',
+            '3':'...--', '4':'....-', '5':'.....', '6':'-....', '7':'--...', '8':'---..', '9':'----.', '.':'.-.-.-', ',':'--..--',
+            '?':'..--..', "'":'.----.', '!':'-.-.--', '/':'-..-.', '(':'-.--.', ')':'-.--.-', '&':'.-...', ':':'---...', ';':'-.-.-.',
+            '=':'-...-', '+':'.-.-.', '-':'-....-', '_':'..--.-', '"':'.-..-.', '$':'...-..-', '@':'.--.-.'
+        };
         const reverseMorseDict = Object.fromEntries(Object.entries(morseDict).map(([k, v]) => [v, k]));
+
+        function normalizeMorseText(raw = '') {
+            return String(raw)
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toUpperCase().replace(/\s+/g, ' ').trim();
+        }
+
+        function normalizeMorseCode(raw = '') {
+            return String(raw)
+                .replace(/[–—−]/g, '-')
+                .replace(/[|\n\r\t]+/g, ' / ')
+                .replace(/\s*\/\s*/g, ' / ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+        }
+
+        function encodeMorseText(raw = '') {
+            const text = normalizeMorseText(raw);
+            if(!text) return '';
+            return text.split(' ').map(word => {
+                return [...word].map(ch => morseDict[ch] || '').filter(Boolean).join(' ');
+            }).filter(Boolean).join(' / ');
+        }
+
+        function decodeMorseCode(raw = '') {
+            const code = normalizeMorseCode(raw);
+            if(!code) return '';
+            return code.split(' ').map(token => {
+                if(token === '/') return ' ';
+                return reverseMorseDict[token] || '�';
+            }).join('').replace(/\s+/g, ' ').trim();
+        }
+
+        function escapeConsoleText(value = '') {
+            return String(value).replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+        }
+
+        function updateMorseTool(mode) {
+            const input = document.getElementById('morse-input');
+            const output = document.getElementById('morse-output');
+            if(!input || !output) return;
+            const raw = input.value || '';
+            const result = mode === 'decode' ? decodeMorseCode(raw) : encodeMorseText(raw);
+            output.innerText = result || (mode === 'decode' ? 'Sin código Morse válido.' : 'Sin texto válido para codificar.');
+            printToConsole(`[MORSE] ${mode === 'decode' ? 'Decodificado' : 'Codificado'}: ${escapeConsoleText(result || '∅')}`, 'sys');
+        }
 
         let peakSMeter = 0; let peakHoldTime = 0; let currentSMeterRaw = 0;
 
@@ -2004,7 +2070,9 @@
             if(!cwIsDown && now - cwLastStateChange > 600) { 
                 let word = cwDecodeBuffer.join('');
                 if(word.length > 0) {
-                    printToConsole(`[TX CW] Decoded: ${word}`, 'sys');
+                    const morseWord = normalizeMorseCode(word);
+                    const decodedWord = decodeMorseCode(morseWord);
+                    printToConsole(`[TX CW] ${escapeConsoleText(morseWord)} => ${escapeConsoleText(decodedWord || '?')}`, 'sys');
                     
                     let activeNets = qsoNetworks.filter(n => n.type === 'CW_QSO' && Math.abs(n.freq - vfoFreqActual) < 2500)
                                                 .sort((a,b) => Math.abs(a.freq - vfoFreqActual) - Math.abs(b.freq - vfoFreqActual));
@@ -2016,7 +2084,7 @@
                         let targetNet = activeNets[0];
                         let botCall = targetNet.bots[targetNet.activeBotIdx].call;
                         
-                        if(word.includes("CQ") || word.includes(botCall) || word.includes("DE")) {
+                        if(decodedWord.includes("CQ") || decodedWord.includes(botCall) || decodedWord.includes("DE")) {
                             targetNet.state = 'TX';
                             targetNet.timer = 8;
                             targetNet.cwMsg = `${myCallsign} DE ${botCall} UR ${targetNet.pirate ? 'QRM' : '599'} TU 73`;
@@ -2440,6 +2508,13 @@
                 userFt8State = 'TX_CUSTOM';
                 document.getElementById('ft8-next-msg').innerText = `Auto-TX: CUSTOM`;
                 printToConsole(`[SYS] Mensaje FT8 personalizado en cola: ${userFt8CustomMessage}`, 'sys');
+            });
+
+            document.getElementById('btn-morse-encode').addEventListener('click', () => updateMorseTool('encode'));
+            document.getElementById('btn-morse-decode').addEventListener('click', () => updateMorseTool('decode'));
+            document.getElementById('btn-morse-clear').addEventListener('click', () => {
+                document.getElementById('morse-input').value = '';
+                document.getElementById('morse-output').innerText = 'MORSE READY';
             });
 
             document.getElementById('btn-ft8-mode').addEventListener('click', () => {
