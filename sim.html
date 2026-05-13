@@ -440,6 +440,7 @@
                     <button class="btn-sm" onclick="tuneTo(14250000, 'USB')">20m SSB</button>
                     <button class="btn-sm" onclick="tuneTo(28400000, 'USB')">10m SSB</button>
                     <button class="btn-sm" onclick="tuneTo(1200000, 'AM')">BC AM</button>
+                    <button class="btn-sm" onclick="tuneTo(4625000, 'AM')" style="color:#fca5a5; border-color:#7f1d1d;">4.625</button>
                 </div>
                 <button class="btn-sm" id="btn-ft8-mode" style="margin-top:8px; width:100%; background:linear-gradient(180deg,#ec4899,#9d174d); color:#fff;">FT8 Mode</button>
                 <div class="btn-grid-4" style="margin-top: 12px;">
@@ -501,6 +502,8 @@
         const MAX_FREQ = 30000000;
         const IF_CENTER = 15000; 
         const IF_BANDWIDTH = 12000; 
+        const UVB76_FREQ = 4625000;
+        const UVB76_LABEL = 'UVB-76 / The Buzzer';
         
         let vfoFreqTarget = 7074000; 
         let vfoFreqActual = 7074000; 
@@ -522,7 +525,7 @@
         
         let qsoNetworks = [];
         let voiceBuffers = []; 
-        let musicBuffer, rttyBuffer, qrnBuffer;
+        let musicBuffer, rttyBuffer, qrnBuffer, uvb76Buffer;
         
         const cvGlobal = document.getElementById('canvas-global'); const ctxGlobal = cvGlobal.getContext('2d', { alpha: false });
         const cvLocal = document.getElementById('canvas-local'); const ctxLocal = cvLocal.getContext('2d', { alpha: false });
@@ -592,6 +595,7 @@
             musicBuffer = generateProceduralMusic(actx);
             rttyBuffer = generateProceduralRTTY(actx);
             qrnBuffer = createPinkNoise(actx, 1.0); 
+            uvb76Buffer = generateProceduralUVB76(actx);
             
             setupCoreAudio();
             buildWeaverRX();
@@ -1084,6 +1088,14 @@
                 });
             }
 
+            // Easter egg HF: UVB-76, "The Buzzer", en 4625 kHz AM.
+            qsoNetworks.push({
+                id: 'easter_uvb76', freq: UVB76_FREQ, type: 'UVB76', mode: 'AM',
+                bots: [ {call: UVB76_LABEL, pwr: 1.35} ], state: 'TX', timer: 999999, activeBotIdx: 0,
+                fadingRates: [0.018, 0.041], fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI],
+                activeNodes: null, easterEgg: true
+            });
+
             for(let i=0; i<15; i++) {
                 qsoNetworks.push({
                     id: 'net_am_'+i, freq: 500000 + Math.random()*1200000, type: 'AM_BROADCAST', mode: 'AM',
@@ -1091,6 +1103,55 @@
                     fadingRates: [0.02, 0], fadingPhases: [0, 0], activeNodes: null
                 });
             }
+        }
+
+
+        function generateProceduralUVB76(context) {
+            const sr = context.sampleRate;
+            const seconds = 10.2;
+            const len = Math.floor(sr * seconds);
+            const buf = context.createBuffer(1, len, sr);
+            const data = buf.getChannelData(0);
+            let t = 0;
+            let gateStart = -999;
+            let gateUntil = 0;
+            let nextGate = 0.28;
+            let buzzIndex = 0;
+            const cycle = 2.30;
+
+            for(let i=0; i<len; i++) {
+                t = i / sr;
+                if(t >= nextGate) {
+                    const onDur = 1.17 + Math.sin(buzzIndex * 1.73) * 0.018 + (Math.random() - 0.5) * 0.016;
+                    gateStart = t;
+                    gateUntil = t + onDur;
+                    nextGate = t + cycle + Math.sin(buzzIndex * 0.91) * 0.022 + (Math.random() - 0.5) * 0.018;
+                    buzzIndex++;
+                }
+
+                const inBuzz = t < gateUntil;
+                const edgeAge = Math.max(t - gateStart, 0);
+                const releaseAge = Math.max(t - gateUntil, 0);
+                let env = inBuzz ? 1 : 0;
+                if(inBuzz) env *= Math.min(1, edgeAge / 0.018);
+                if(!inBuzz && releaseAge < 0.026) env = Math.max(env, 1 - (releaseAge / 0.026));
+
+                const slowDrift = 0.55 * Math.sin(2 * Math.PI * 0.019 * t) + 0.18 * Math.sin(2 * Math.PI * 0.071 * t);
+                const base = 101.8 + slowDrift;
+                const sawPhase = (t * base) % 1;
+                const saw = (sawPhase * 2 - 1);
+                const fundamental = Math.sin(2 * Math.PI * (base * 0.98) * t + 0.18 * Math.sin(2 * Math.PI * 0.37 * t));
+                const harmonic = Math.sin(2 * Math.PI * (base * 2.04) * t) * 0.24;
+                const subMechanical = Math.sin(2 * Math.PI * 50 * t) * 0.045 + Math.sin(2 * Math.PI * 100 * t) * 0.025;
+                const roughness = (Math.random() * 2 - 1) * 0.026;
+                const relayTick = (env > 0.96 && edgeAge < 0.014) ? (1 - edgeAge / 0.014) * 0.18 : 0;
+                const buzz = (saw * 0.42 + fundamental * 0.38 + harmonic + subMechanical + roughness) * env;
+                const roomCarrier = Math.sin(2 * Math.PI * 23.1 * t) * 0.012;
+                const staticBed = (Math.random() * 2 - 1) * 0.012;
+
+                data[i] = Math.max(-0.34, Math.min(0.34, buzz * 0.32 + relayTick + roomCarrier + staticBed));
+            }
+            return buf;
         }
 
         // ================= DSP WEBAUDIO REALISTA =================
@@ -1280,6 +1341,15 @@
                 
                 nodes.audio.connect(nodes.mod.gain); nodes.carrier.connect(nodes.mod); nodes.mod.connect(nodes.f1); nodes.f1.connect(nodes.env); nodes.env.connect(sourceMix);
                 nodes.carrier.start(); nodes.audio.start();
+            } else if (net.type === 'UVB76') {
+                nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq;
+                nodes.mod = actx.createGain(); nodes.mod.gain.value = 0.34;
+                nodes.audio = actx.createBufferSource(); nodes.audio.buffer = uvb76Buffer; nodes.audio.loop = true;
+                nodes.buzzBand = actx.createBiquadFilter(); nodes.buzzBand.type = 'highpass'; nodes.buzzBand.frequency.value = 65; nodes.buzzBand.Q.value = 0.7;
+                nodes.buzzLowPass = actx.createBiquadFilter(); nodes.buzzLowPass.type = 'lowpass'; nodes.buzzLowPass.frequency.value = 2400;
+                nodes.audio.connect(nodes.buzzBand); nodes.buzzBand.connect(nodes.buzzLowPass); nodes.buzzLowPass.connect(nodes.mod.gain);
+                nodes.carrier.connect(nodes.mod); nodes.mod.connect(sourceMix);
+                nodes.carrier.start(); nodes.audio.start(0, Math.random()*4);
             } else if (net.mode === 'AM') {
                 nodes.carrier = actx.createOscillator(); nodes.carrier.frequency.value = ifFreq;
                 nodes.mod = actx.createGain(); nodes.mod.gain.value = 0.5;
@@ -1337,6 +1407,7 @@
             const n = net.activeNodes;
             if(n.osc) n.osc.stop(); if(n.carrier) n.carrier.stop(); 
             if(n.audio) n.audio.stop(); if(n.audioSources) n.audioSources.forEach(s=>s.stop());
+            if(n.buzzBand) n.buzzBand.disconnect(); if(n.buzzLowPass) n.buzzLowPass.disconnect();
             n.fader.disconnect(); n.path1.disconnect(); n.path2.disconnect(); n.dist.disconnect(); 
             net.activeNodes = null;
         }
@@ -1904,6 +1975,7 @@
 
             setModeDefaultBw();
             updateVFO();
+            if(Math.abs(freq - UVB76_FREQ) < 1) printToConsole('[EASTER EGG] UVB-76 / The Buzzer sintonizado en 4625 kHz AM.', 'sys');
         }
 
         function setModeDefaultBw() {
@@ -1987,15 +2059,16 @@
                 let isTx = net.state === 'TX'; let desc = isTx ? `TX: ${net.bots[net.activeBotIdx].call}` : 'QRT / Escuchando';
                 if(net.pirate) desc = isTx ? `QRM/Pirata: ${net.bots[net.activeBotIdx].call}` : 'Pirata al acecho';
                 if(net.type === 'RTTY') desc = 'FSK Data 45bd'; 
+                else if(net.type === 'UVB76') desc = 'Easter egg: The Buzzer activo (~1.2s ON / ~1.1s OFF)';
                 else if(net.type === 'AM_BROADCAST') desc = 'Broadcasting';
                 else if(net.type === 'FT8') desc = isTx ? `FT8 Seq Activo` : `FT8 Slot IDLE`;
                 
-                let modeDisp = net.type === 'FT8' ? 'ft8' : net.mode.toLowerCase();
+                let modeDisp = net.type === 'FT8' ? 'ft8' : (net.type === 'UVB76' ? 'carrier' : net.mode.toLowerCase());
                 
                 html += `<div class="log-entry" onclick="tuneTo(${net.freq}, '${net.mode}')">
                             <div class="log-header">
                                 <span class="log-freq">${(net.freq/1000).toFixed(1)}</span>
-                                <span class="log-mode ${modeDisp}">${net.type==='FT8'?'FT8':net.mode}</span>
+                                <span class="log-mode ${modeDisp}">${net.type==='FT8'?'FT8':(net.type==='UVB76'?'BUZZ':net.mode)}</span>
                             </div>
                             <div class="log-desc ${isTx ? 'log-active':''}">${desc}</div>
                          </div>`;
@@ -2061,7 +2134,7 @@
 
             qsoNetworks.forEach(net => {
                 if(net.state !== 'TX') return;
-                ctxGlobal.fillStyle = net.type === 'FT8' ? 'rgba(219, 39, 119, 0.8)' : (net.type === 'RTTY' ? 'rgba(245, 158, 11, 0.8)' : 'rgba(16, 185, 129, 0.6)');
+                ctxGlobal.fillStyle = net.type === 'FT8' ? 'rgba(219, 39, 119, 0.8)' : (net.type === 'UVB76' ? 'rgba(239, 68, 68, 0.85)' : (net.type === 'RTTY' ? 'rgba(245, 158, 11, 0.8)' : 'rgba(16, 185, 129, 0.6)'));
                 let x = (net.freq / MAX_FREQ) * wG; let pwr = net.bots[net.activeBotIdx] ? net.bots[net.activeBotIdx].pwr : 1.0;
                 let h = pwr * hG * 0.8; ctxGlobal.fillRect(x - 1, hG - h, 2, h);
             });
