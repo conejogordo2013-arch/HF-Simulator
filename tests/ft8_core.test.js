@@ -43,6 +43,8 @@ vm.runInContext(script, sandbox);
 assert.equal(typeof sandbox.normalizeFT8Message, 'function');
 assert.equal(typeof sandbox.ft8MessageToTones, 'function');
 assert.equal(typeof sandbox.genFT8Report, 'function');
+assert.equal(typeof sandbox.encodeMorseText, 'function');
+assert.equal(typeof sandbox.decodeMorseCode, 'function');
 
 assert.equal(sandbox.normalizeFT8Message('CQ K1ABC FN31'), 'CQ K1ABC FN31');
 assert.equal(sandbox.normalizeFT8Message('BAD MESSAGE'), '');
@@ -54,4 +56,8 @@ assert.deepEqual(t1, t2);
 
 for (let i=0; i<20; i++) assert.match(sandbox.genFT8Report(), /^-[0-2][0-9]$/);
 
-console.log('FT8 core tests: OK');
+assert.equal(sandbox.encodeMorseText('CQ DE IA1SDR'), '-.-. --.- / -.. . / .. .- .---- ... -.. .-.');
+assert.equal(sandbox.decodeMorseCode('-.-. --.- / -.. . / .. .- .---- ... -.. .-.'), 'CQ DE IA1SDR');
+assert.equal(sandbox.decodeMorseCode('... --- ...'), 'SOS');
+
+console.log('FT8 and Morse core tests: OK');
