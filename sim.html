@@ -1120,14 +1120,34 @@
         function genServiceCall(prefix = 'UNIT') {
             return `${prefix}-${Math.floor(100 + Math.random()*899)}`;
         }
-        function addSimNetwork({ id, freq, type, mode, call, pwr = 0.6, state = 'IDLE', timer = 8, distanceKm = 80, txPowerW = 100, program = 'voice', note = '' }) {
-            qsoNetworks.push({
-                id, freq, type, mode, program, distanceKm, txPowerW, note,
-                bots: [ {call, pwr} ], state, timer, activeBotIdx: 0,
+        function genBotDialogue(net) {
+            const call = net.bots?.[net.activeBotIdx]?.call || genServiceCall('BOT');
+            const other = net.bots?.[(net.activeBotIdx + 1) % Math.max(1, net.bots.length)]?.call || genServiceCall('BOT');
+            const qth = genGrid();
+            const messages = {
+                PUBLIC_FM: [`${call}: música continua, ID de emisora y clima local`, `${call}: locutor anuncia noticias y tráfico`, `${call}: bloque musical con compresión FM`],
+                VHF_HAM: [`${other} de ${call}, móvil en repetidor, cambio`, `${call} reporta señal fuerte en VHF desde ${qth}`, `${call} y ${other} coordinan QSY a simplex`],
+                UHF_SERVICE: [`${call}: despacho recibido, unidad en ruta`, `${call}: control solicita estado y ubicación`, `${call}: tráfico corto UHF con CTCSS`],
+                MIL_SSB: [`${call}: autenticación y tráfico cifrado simulado`, `${call} a ${other}: comprobación HF, cambio`, `${call}: net militar en guardia USB`],
+                PIRATE_FM: [`${call}: emisión pirata FM con música saturada`, `${call}: ID clandestina y dedicatorias`, `${call}: QRM pirata sobre canal local`],
+                PIRATE_AM: [`${call}: portadora AM pirata con audio viejo`, `${call}: broadcast pirata nocturno`, `${call}: señal AM sobre modulada`],
+                SSB_QSO: [`${other} de ${call}, cinco nueve, nombre BOT`, `${call}: charla SSB sobre propagación`, `${call} llama CQ DX en ${net.mode}`],
+                CW_QSO: [`CQ CQ DE ${call} ${call} K`, `${other} DE ${call} UR 599 QTH ${qth} K`, `${other} DE ${call} TU 73 SK`]
+            };
+            const pool = messages[net.type] || messages.SSB_QSO;
+            return pool[Math.floor(Math.random()*pool.length)];
+        }
+        function addSimNetwork({ id, freq, type, mode, call, bots = null, pwr = 0.6, state = 'IDLE', timer = 8, distanceKm = 80, txPowerW = 100, program = 'voice', note = '', pirate = false, wpm = null }) {
+            const botList = bots || [ {call, pwr}, {call: genServiceCall(type.includes('UHF') ? 'UNIT' : 'BOT'), pwr: Math.max(0.18, pwr * 0.75)} ];
+            const net = {
+                id, freq, type, mode, program, distanceKm, txPowerW, note, pirate,
+                bots: botList, state, timer, activeBotIdx: 0,
                 fadingRates: [0.025 + Math.random()*0.08, 0.05 + Math.random()*0.12],
                 fadingPhases: [Math.random()*Math.PI, Math.random()*Math.PI], activeNodes: null,
-                cwMsg: '', qsoStep: 0, wpm: 12 + Math.random()*18
-            });
+                cwMsg: '', qsoStep: 0, wpm: wpm || (12 + Math.random()*18), currentMessage: ''
+            };
+            if(state === 'TX') net.currentMessage = genBotDialogue(net);
+            qsoNetworks.push(net);
         }
 
         function populateBotNetworks() {
@@ -1212,6 +1232,26 @@
             [8992000, 11175000, 13200000].forEach((freq, i) => addSimNetwork({
                 id: `net_mil_hf_${i}`, freq, type: 'MIL_SSB', mode: 'USB', call: genServiceCall('MIL'),
                 pwr: 0.75 + Math.random()*0.6, state: 'IDLE', timer: Math.random()*18, distanceKm: 1600 + Math.random()*4200, txPowerW: 1500, program: 'voice', note: 'Militar SSB HF'
+            }));
+            const allBandPirates = [
+                [1875000, 'CW'], [3955000, 'AM'], [6200000, 'AM'], [6925000, 'USB'], [7450000, 'LSB'],
+                [10118000, 'CW'], [14313000, 'USB'], [18157000, 'USB'], [27385000, 'FM'], [29600000, 'FM'],
+                [50150000, 'USB'], [145650000, 'FM'], [151820000, 'FM'], [433920000, 'FM'], [462725000, 'FM']
+            ];
+            allBandPirates.forEach(([freq, mode], i) => addSimNetwork({
+                id: `net_ai_pirate_${i}`, freq, type: mode === 'CW' ? 'CW_QSO' : (mode === 'AM' ? 'PIRATE_AM' : (mode === 'FM' ? 'PIRATE_FM' : 'SSB_QSO')),
+                mode, call: genPirateCall(), pwr: 0.55 + Math.random()*1.1, state: 'IDLE', timer: Math.random()*14,
+                distanceKm: freq > 30000000 ? 8 + Math.random()*80 : 400 + Math.random()*4200, txPowerW: mode === 'FM' ? 40 : 800,
+                program: mode === 'AM' ? 'talk' : 'voice', pirate: true, note: 'Bot pirata IA multi-banda', wpm: 8 + Math.random()*18
+            }));
+            const hfBotNets = [
+                [1845000, 'LSB'], [3625000, 'LSB'], [5357000, 'USB'], [7055000, 'LSB'], [10122000, 'CW'],
+                [14195000, 'USB'], [18130000, 'USB'], [21285000, 'USB'], [24950000, 'USB'], [28375000, 'USB']
+            ];
+            hfBotNets.forEach(([freq, mode], i) => addSimNetwork({
+                id: `net_hf_ai_${i}`, freq, type: mode === 'CW' ? 'CW_QSO' : 'SSB_QSO', mode, call: genCall(),
+                pwr: 0.35 + Math.random()*0.85, state: 'IDLE', timer: Math.random()*20, distanceKm: 700 + Math.random()*5200,
+                txPowerW: 100, program: 'voice', note: 'Bots IA hablando entre sí en HF', wpm: 14 + Math.random()*18
             }));
 
             // Easter egg HF: UVB-76, "The Buzzer", en 4625 kHz AM.
@@ -1833,13 +1873,19 @@
                     net.timer -= 0.05;
                     if(net.timer <= 0) {
                         if(net.state === 'IDLE' || net.state === 'PAUSE') {
-                            net.state = 'TX'; net.timer = net.pirate ? (1.5 + Math.random() * 7) : (5 + Math.random() * 15);
+                            net.state = 'TX';
+                            net.timer = net.pirate ? (1.5 + Math.random() * 7) : (net.type === 'PUBLIC_FM' ? 20 + Math.random()*40 : 5 + Math.random() * 15);
                             net.activeBotIdx = (net.activeBotIdx + 1) % net.bots.length;
+                            net.currentMessage = genBotDialogue(net);
                             if(net.type === 'CW_QSO') {
-                                net.cwMsg = genCwQsoMessage(net); net.cwIdx = 0; net.cwTime = now;
+                                net.cwMsg = net.currentMessage || genCwQsoMessage(net); net.cwIdx = 0; net.cwTime = now;
+                            }
+                            if((net.pirate || net.type === 'MIL_SSB' || net.type === 'VHF_HAM' || net.type === 'UHF_SERVICE') && Math.abs(net.freq - vfoFreqActual) <= IF_BANDWIDTH * 2) {
+                                printToConsole(`[BOT ${net.mode}] ${escapeConsoleText(net.currentMessage)}`, 'sys');
                             }
                         } else if (net.state === 'TX') {
-                            net.state = 'PAUSE'; net.timer = 1 + Math.random() * 3;
+                            net.state = net.type === 'PUBLIC_FM' ? 'TX' : 'PAUSE'; net.timer = net.type === 'PUBLIC_FM' ? 20 + Math.random()*40 : 1 + Math.random() * 3;
+                            if(net.type === 'PUBLIC_FM') net.currentMessage = genBotDialogue(net);
                         }
                     }
                 }
@@ -1849,7 +1895,7 @@
                         if(net.mode === 'CW' && net.activeNodes.env) net.activeNodes.env.gain.setTargetAtTime(0, now, 0.02);
                         if(net.type !== 'CW_QSO' && net.activeNodes.fader) net.activeNodes.fader.gain.setTargetAtTime(0, now, 0.05);
                     } else if (net.state === 'TX') {
-                        if(net.type === 'SSB_QSO') net.activeNodes.fader.gain.setTargetAtTime(currentPwr, now, 0.05);
+                        if(net.type !== 'CW_QSO') net.activeNodes.fader.gain.setTargetAtTime(currentPwr, now, 0.05);
                         else if (net.type === 'CW_QSO' && net.cwMsg) {
                             if(now >= net.cwTime && net.cwIdx < net.cwMsg.length) {
                                 let char = net.cwMsg[net.cwIdx].toUpperCase(); let dot = 1.2 / net.wpm;
@@ -2064,16 +2110,18 @@
 
         function triggerUserSignalInterference(kind = 'TX') {
             if(!actx || Math.random() > 0.38) return;
-            const candidates = qsoNetworks.filter(n => (n.type === 'CW_QSO' || n.type === 'SSB_QSO') && n.pirate);
+            const candidates = qsoNetworks.filter(n => n.pirate || ['VHF_HAM','UHF_SERVICE','MIL_SSB','PUBLIC_FM'].includes(n.type));
             const qrm = candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : null;
             if(!qrm) return;
             qrm.freq = vfoFreqActual + (Math.random()*1200 - 600);
+            qrm.mode = currentMode === 'FM' ? 'FM' : qrm.mode;
             qrm.state = 'TX';
             qrm.timer = 2.0 + Math.random()*5.5;
             qrm.activeBotIdx = 0;
+            qrm.currentMessage = genBotDialogue(qrm);
             if(qrm.type === 'CW_QSO') { qrm.cwMsg = `QRL? DE ${qrm.bots[0].call} K`; qrm.cwIdx = 0; qrm.cwTime = actx.currentTime + 0.15; }
             applyVFOHardware();
-            printToConsole(`[QRM] Interferencia de bot/pirata sobre tu ${kind}: ${qrm.bots[0].call}`, 'sys');
+            printToConsole(`[QRM] Interferencia ${qrm.mode} de bot/IA sobre tu ${kind}: ${qrm.bots[0].call} — ${escapeConsoleText(qrm.currentMessage)}`, 'sys');
         }
 
         function queueFt8BotResponseToUser(message, audioFreq) {
@@ -2314,8 +2362,11 @@
                 else if(net.type === 'VHF_HAM') desc = isTx ? `VHF radioaficionado: ${net.bots[0].call}` : 'VHF ham en espera';
                 else if(net.type === 'UHF_SERVICE') desc = isTx ? `UHF servicio: ${net.bots[0].call}` : 'UHF servicio en espera';
                 else if(net.type === 'MIL_SSB') desc = isTx ? `Militar HF SSB: ${net.bots[0].call}` : 'Militar HF guardia';
+                else if(net.type === 'PIRATE_FM') desc = isTx ? `Pirata FM: ${net.bots[0].call}` : 'Pirata FM al acecho';
+                else if(net.type === 'PIRATE_AM') desc = isTx ? `Pirata AM: ${net.bots[0].call}` : 'Pirata AM al acecho';
                 else if(net.type === 'AM_BROADCAST') desc = 'Broadcasting';
                 else if(net.type === 'FT8') desc = isTx ? `FT8 Seq Activo` : `FT8 Slot IDLE`;
+                if(net.currentMessage && net.type !== 'FT8') desc = `${desc} — ${escapeConsoleText(net.currentMessage)}`;
 
                 let modeDisp = net.type === 'FT8' ? 'ft8' : (net.type === 'UVB76' ? 'carrier' : (net.type === 'MIL_SSB' ? 'mil' : net.mode.toLowerCase()));
 
@@ -2454,7 +2505,7 @@
 
             qsoNetworks.forEach(net => {
                 if(net.state !== 'TX') return;
-                ctxGlobal.fillStyle = net.type === 'FT8' ? 'rgba(219, 39, 119, 0.8)' : (net.type === 'UVB76' ? 'rgba(239, 68, 68, 0.85)' : (net.type === 'RTTY' ? 'rgba(245, 158, 11, 0.8)' : 'rgba(16, 185, 129, 0.6)'));
+                ctxGlobal.fillStyle = net.type === 'FT8' ? 'rgba(219, 39, 119, 0.8)' : (net.type === 'UVB76' ? 'rgba(239, 68, 68, 0.85)' : (net.pirate ? 'rgba(248, 113, 113, 0.85)' : (net.mode === 'FM' ? 'rgba(56, 189, 248, 0.75)' : (net.type === 'MIL_SSB' ? 'rgba(34, 197, 94, 0.75)' : (net.type === 'RTTY' ? 'rgba(245, 158, 11, 0.8)' : 'rgba(16, 185, 129, 0.6)')))));
                 let x = (net.freq / MAX_FREQ) * wG; let pwr = net.bots[net.activeBotIdx] ? net.bots[net.activeBotIdx].pwr : 1.0;
                 let h = pwr * hG * 0.8; ctxGlobal.fillRect(x - 1, hG - h, 2, h);
             });
